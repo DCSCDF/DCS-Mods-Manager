@@ -13,20 +13,23 @@
 
                         <div class="flex items-center justify-between mb-3">
                                 <div class="flex gap-4">
-                                        <a-radio-group>
-                                                <a-radio-button value="large">全选</a-radio-button>
-                                                <a-radio-button value="default">反选</a-radio-button>
-                                                <a-radio-button value="small">
-                                                        <CloseOutlined />
-                                                </a-radio-button>
-                                        </a-radio-group>
-
                                         <a-cascader  style="width: 100px"  placeholder="状态筛选" />
 
                                         <a-input-search
                                             placeholder="搜索"
                                             style="width: 200px"
                                         />
+
+                                        <a-radio-group>
+                                                <a-radio-button value="large">禁用</a-radio-button>
+                                                <a-radio-button value="default">启用</a-radio-button>
+                                                <a-radio-button value="default">删除</a-radio-button>
+<!--                                                <a-radio-button value="small">-->
+<!--                                                        <CloseOutlined />-->
+<!--                                                </a-radio-button>-->
+                                        </a-radio-group>
+
+
                                 </div>
                                 <div class="flex gap-4">
                                         <a-radio-group>
@@ -36,9 +39,9 @@
                                                 <a-radio-button value="default">
                                                         <UploadOutlined />
                                                 </a-radio-button>
-                                                <a-radio-button value="small">
-                                                        <DeleteOutlined />
-                                                </a-radio-button>
+<!--                                                <a-radio-button value="small">-->
+<!--                                                        <DeleteOutlined />-->
+<!--                                                </a-radio-button>-->
                                         </a-radio-group>
                                         <a-button type="primary">刷新</a-button>
                                 </div>
@@ -68,7 +71,15 @@
                                 </a-card>
 
                                 <a-card>
-                                        <a-table :columns="columns" :data-source="data" :row-selection="rowSelection" />
+                                        <a-table size="small" :columns="columns" :data-source="data" :row-selection="rowSelection">
+                                                <template #bodyCell="{ column, record }">
+                                                        <template v-if="column.key === 'isUse'">
+                                                                <a-tag :bordered="false" :color="record.isUse ? 'green' : 'red'">
+                                                                        {{ record.isUse ? '启用' : '禁用' }}
+                                                                </a-tag>
+                                                        </template>
+                                                </template>
+                                        </a-table>
                                 </a-card>
 
 
@@ -139,6 +150,14 @@ const columns = [
                 title: '模组名称',
                 dataIndex: 'displayName',
                 key: 'displayName',
+                width: '40%',
+                ellipsis: true,
+        },
+        {
+                title: '状态',
+                dataIndex: 'isUse',
+                width: '70px',
+                key: 'isUse',
                 ellipsis: true,
         },
         {
@@ -158,7 +177,7 @@ const columns = [
         {
                 title: '简介信息',
                 dataIndex: 'info',
-                width: '40%',
+                width: '60%',
                 key: 'info',
                 ellipsis: true,
         },
@@ -170,6 +189,7 @@ interface DataItem {
         version: string;
         developerName: string;
         info: string;
+        isUse: boolean;
         children?: DataItem[];
 }
 
@@ -177,6 +197,7 @@ const data: DataItem[] = [
         {
                 key: 1,
                 displayName: 'John Brown sr.',
+                isUse: true,
                 version: "2.0.2812",
                 developerName: 'New York No. 1 Lake Park',
                 info: "",
@@ -184,6 +205,7 @@ const data: DataItem[] = [
                         {
                                 key: 11,
                                 displayName: 'John Brown',
+                                isUse: true,
                                 version: "6.1.0",
                                 developerName: 'New York No. 2 Lake Park',
                                 info: ""
@@ -191,6 +213,7 @@ const data: DataItem[] = [
                         {
                                 key: 12,
                                 displayName: 'John Brown jr.',
+                                isUse: true,
                                 version: "6.1.0",
                                 developerName: 'New York No. 3 Lake Park',
                                 info: "",
@@ -198,6 +221,7 @@ const data: DataItem[] = [
                                         {
                                                 key: 121,
                                                 displayName: 'Jimmy Brown',
+                                                isUse: true,
                                                 version: "6.1.0",
                                                 developerName: 'New York No. 3 Lake Park',
                                                 info: ""
@@ -207,6 +231,7 @@ const data: DataItem[] = [
                         {
                                 key: 13,
                                 displayName: 'Jim Green sr.',
+                                isUse: true,
                                 version: "6.1.0",
                                 developerName: 'London No. 1 Lake Park',
                                 info: "The Sukhoi Su-35 (NATO reporting name: Flanker-E) is the designation for two separate, heavily-upgraded derivatives of the Su-27 air-defence fighter. They are single-seat, twin-engine, highly-maneuverable aircraft, designed by the Sukhoi Design Bureau and built by the Komsomolsk-on-Amur Aircraft Production Association.",
@@ -214,6 +239,7 @@ const data: DataItem[] = [
                                         {
                                                 key: 131,
                                                 displayName: 'Jim Green',
+                                                isUse: true,
                                                 version: "6.1.0",
                                                 developerName: 'London No. 2 Lake Park',
                                                 info: "",
@@ -221,6 +247,7 @@ const data: DataItem[] = [
                                                         {
                                                                 key: 1311,
                                                                 displayName: 'Jim Green jr.',
+                                                                isUse: true,
                                                                 version: "6.1.0",
                                                                 developerName: 'London No. 3 Lake Park',
                                                                 info: ""
@@ -228,6 +255,7 @@ const data: DataItem[] = [
                                                         {
                                                                 key: 1312,
                                                                 displayName: 'Jimmy Green sr.',
+                                                                isUse: true,
                                                                 version: "6.1.0",
                                                                 developerName: 'London No. 4 Lake Park',
                                                                 info: ""
@@ -241,6 +269,7 @@ const data: DataItem[] = [
         {
                 key: 2,
                 displayName: 'Joe Black',
+                isUse: false,
                 version: "6.1.0",
                 developerName: 'Sidney No. 1 Lake Park',
                 info: "The Sukhoi Su-35 (NATO reporting name: Flanker-E) is the designation for two separate, heavily-upgraded derivatives of the Su-27 air-defence fighter. They are single-seat, twin-engine, highly-maneuverable aircraft, designed by the Sukhoi Design Bureau and built by the Komsomolsk-on-Amur Aircraft Production Association."
