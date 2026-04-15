@@ -1,7 +1,7 @@
 <template>
-        <a-layout :style="{ height: '100vh' }">
+        <a-layout :style="{ height: '100vh', overflow: 'hidden' }">
                 <Header/>
-                <a-layout>
+                <a-layout :style="{ overflow: 'hidden' }">
                         <sider v-model="currentTab" @change="handleTabChange"/>
                         <a-layout-content :style="contentStyle">
                                 <ModManagement v-if="currentTab === 'sub1'"/>
@@ -27,6 +27,7 @@ const contentStyle: CSSProperties = {
         backgroundColor: '#f8f8f8',
         minHeight: '0',
         flex: '1 1 auto',
+        overflow: 'auto',
 };
 
 const footerStyle: CSSProperties = {

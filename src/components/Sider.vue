@@ -20,9 +20,11 @@ import type {CSSProperties, VueElement} from 'vue';
 const siderStyle: CSSProperties = {
         textAlign: 'center',
         color: '#3e3e3e',
-
-        overflow: 'auto',
-        position: 'relative',
+        overflowY: 'auto',
+        overflowX: 'hidden',
+        height: 'calc(100vh - 84px)',
+        position: 'sticky',
+        top: 0,
 };
 
 import { reactive, ref, h, computed } from 'vue';
