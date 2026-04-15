@@ -10,13 +10,101 @@
                         </p>
                 </div>
 
-                <a-card>123</a-card>
+                <a-card>
+                  <a-form layout="vertical">
+                    <a-form-item label="DCS 安装目录" extra="请选择保存的游戏文件夹中的DCS，请勿选择游戏安装的目录。">
+                      <div class="flex items-center gap-3">
+                        <a-input
+                          v-model:value="dcsPath"
+                          placeholder="请输入或选择 DCS 安装路径"
+                          class="flex-1"
+                        />
+                        <a-button type="primary" @click="handleSelectFolder">
+                          <template #icon>
+                            <folder-open-outlined />
+                          </template>
+                          选择文件夹
+                        </a-button>
+                      </div>
+                    </a-form-item>
+
+                    <a-form-item>
+                      <a-space>
+                        <a-button type="primary" @click="handleSubmit" :loading="loading">
+                          保存
+                        </a-button>
+                        <a-button @click="dcsPath = ''">
+                          重置
+                        </a-button>
+                      </a-space>
+                    </a-form-item>
+                  </a-form>
+                </a-card>
         </div>
 </template>
 
 <script setup lang="ts">
+import { ref, onMounted } from 'vue'
+import { message } from 'ant-design-vue'
+import { FolderOpenOutlined } from '@ant-design/icons-vue'
 
+// DCS 安装路径
+const dcsPath = ref('')
+const loading = ref(false)
 
+// 组件挂载时加载已保存的设置
+onMounted(async () => {
+  try {
+    if (window.windowApi?.getSettings) {
+      const settings = await window.windowApi.getSettings()
+      dcsPath.value = settings.dcsPath
+    }
+  } catch (error) {
+    console.error('加载设置失败:', error)
+  }
+})
+
+// 选择文件夹
+const handleSelectFolder = async () => {
+  try {
+    // 检查是否在 Electron 环境中
+    if (window.windowApi?.selectFolder) {
+      const folderPath = await window.windowApi.selectFolder(
+        '选择 DCS 安装目录',
+        dcsPath.value
+      )
+      if (folderPath) {
+        dcsPath.value = folderPath
+      }
+    } else {
+      message.warning('此功能仅在 Electron 环境下可用')
+    }
+  } catch (error) {
+    message.error('选择文件夹失败: ' + (error as Error).message)
+  }
+}
+
+// 提交表单
+const handleSubmit = async () => {
+  if (!dcsPath.value) {
+    message.warning('请选择 DCS 安装路径')
+    return
+  }
+
+  loading.value = true
+  try {
+    if (window.windowApi?.saveSettings) {
+      await window.windowApi.saveSettings({ dcsPath: dcsPath.value })
+      message.success('保存成功')
+    } else {
+      message.warning('此功能仅在 Electron 环境下可用')
+    }
+  } catch (error) {
+    message.error('保存失败: ' + (error as Error).message)
+  } finally {
+    loading.value = false
+  }
+}
 </script>
 
 <style scoped>

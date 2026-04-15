@@ -7,6 +7,11 @@ contextBridge.exposeInMainWorld('windowApi', {
   unmaximize: () => ipcRenderer.send('window-unmaximize'),
   close: () => ipcRenderer.send('window-close'),
   isMaximized: () => ipcRenderer.invoke('window-is-maximized'),
+  selectFolder: (title?: string, defaultPath?: string) =>
+    ipcRenderer.invoke('select-folder', title, defaultPath),
+  saveSettings: (settings: { dcsPath?: string }) =>
+    ipcRenderer.invoke('save-settings', settings),
+  getSettings: () => ipcRenderer.invoke('get-settings'),
 });
 
 contextBridge.exposeInMainWorld('ipcRenderer', {

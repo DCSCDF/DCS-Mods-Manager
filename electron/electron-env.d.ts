@@ -16,6 +16,9 @@ interface WindowApi {
   unmaximize: () => void;
   close: () => void;
   isMaximized: () => Promise<boolean>;
+  selectFolder: (title?: string, defaultPath?: string) => Promise<string | null>;
+  saveSettings: (settings: { dcsPath?: string }) => Promise<boolean>;
+  getSettings: () => Promise<{ dcsPath: string }>;
 }
 
 interface IpcRenderer {

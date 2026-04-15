@@ -1,7 +1,18 @@
-import { app, BrowserWindow, shell, ipcMain } from 'electron'
+import { app, BrowserWindow, shell, ipcMain, dialog } from 'electron'
 import { release } from 'node:os'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import Store from 'electron-store'
+
+interface AppConfig {
+  dcsPath: string
+}
+
+const store = new Store<AppConfig>({
+  defaults: {
+    dcsPath: ''
+  }
+})
 
 globalThis.__filename = fileURLToPath(import.meta.url)
 globalThis.__dirname = dirname(__filename)
@@ -58,11 +69,11 @@ async function createWindow() {
   })
 
   if (process.env.VITE_DEV_SERVER_URL) { // electron-vite-vue#298
-    win.loadURL(url)
+    await win.loadURL(url)
     // Open devTool if the app is not packaged
-    // win.webContents.openDevTools()
+     win.webContents.openDevTools()
   } else {
-    win.loadFile(indexHtml)
+    await win.loadFile(indexHtml)
   }
 
   // Test actively push message to the Electron-Renderer
@@ -109,7 +120,7 @@ app.on('activate', () => {
   if (allWindows.length) {
     allWindows[0].focus()
   } else {
-    createWindow()
+    createWindow().then( )
   }
 })
 
@@ -124,9 +135,9 @@ ipcMain.handle('open-win', (_, arg) => {
   })
 
   if (process.env.VITE_DEV_SERVER_URL) {
-    childWindow.loadURL(`${url}#${arg}`)
+    childWindow.loadURL(`${url}#${arg}`).then( )
   } else {
-    childWindow.loadFile(indexHtml, { hash: arg })
+    childWindow.loadFile(indexHtml, { hash: arg }).then( )
   }
 })
 
@@ -148,4 +159,36 @@ ipcMain.on('window-close', () => {
 
 ipcMain.handle('window-is-maximized', () => {
   return win?.isMaximized()
+})
+
+// 处理文件夹选择对话框
+ipcMain.handle('select-folder', async (_event, title?: string, defaultPath?: string) => {
+  if (!win) return null
+
+  const result = await dialog.showOpenDialog(win, {
+    title: title || '选择文件夹',
+    properties: ['openDirectory'],
+    defaultPath: defaultPath || undefined,
+  })
+
+  if (result.canceled) {
+    return null
+  }
+
+  return result.filePaths[0] || null
+})
+
+// 保存设置
+ipcMain.handle('save-settings', async (_event, settings: { dcsPath?: string }) => {
+  if (settings.dcsPath !== undefined) {
+    (store as any).set('dcsPath', settings.dcsPath)
+  }
+  return true
+})
+
+// 获取设置
+ipcMain.handle('get-settings', async () => {
+  return {
+    dcsPath: (store as any).get('dcsPath', ''),
+  }
 })
