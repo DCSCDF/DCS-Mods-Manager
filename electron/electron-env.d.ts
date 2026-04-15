@@ -1,14 +1,3 @@
-/// <reference types="vite-plugin-electron/electron-env" />
-
-declare namespace NodeJS {
-  interface ProcessEnv {
-    VSCODE_DEBUG?: 'true'
-    DIST_ELECTRON: string
-    DIST: string
-    /** /dist/ or /public/ */
-    VITE_PUBLIC: string
-  }
-}
 
 interface WindowApi {
   minimize: () => void;
@@ -19,6 +8,7 @@ interface WindowApi {
   selectFolder: (title?: string, defaultPath?: string) => Promise<string | null>;
   saveSettings: (settings: { dcsPath?: string }) => Promise<boolean>;
   getSettings: () => Promise<{ dcsPath: string }>;
+  checkModsFolder: (folderPath: string) => Promise<{ valid: boolean; error?: string }>;
 }
 
 interface IpcRenderer {

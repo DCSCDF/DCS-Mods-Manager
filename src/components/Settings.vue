@@ -64,6 +64,31 @@ onMounted(async () => {
   }
 })
 
+// 验证目录是否包含 Mods 文件夹
+const validateModsFolder = async (folderPath: string): Promise<boolean> => {
+  try {
+    if (!folderPath) {
+      message.warning('请选择有效的目录')
+      return false
+    }
+
+    if (window.windowApi?.checkModsFolder) {
+      const result = await window.windowApi.checkModsFolder(folderPath)
+      if (!result.valid) {
+        message.error(result.error || '未找到 Mods 文件夹')
+        return false
+      }
+      return true
+    } else {
+      message.warning('此功能仅在 Electron 环境下可用')
+      return false
+    }
+  } catch (error) {
+    message.error('验证失败: ' + (error as Error).message)
+    return false
+  }
+}
+
 // 选择文件夹
 const handleSelectFolder = async () => {
   try {
@@ -74,7 +99,11 @@ const handleSelectFolder = async () => {
         dcsPath.value
       )
       if (folderPath) {
-        dcsPath.value = folderPath
+        // 选择文件夹后立即验证是否包含 Mods 文件夹
+        const isValid = await validateModsFolder(folderPath)
+        if (isValid) {
+          dcsPath.value = folderPath
+        }
       }
     } else {
       message.warning('此功能仅在 Electron 环境下可用')
@@ -88,6 +117,12 @@ const handleSelectFolder = async () => {
 const handleSubmit = async () => {
   if (!dcsPath.value) {
     message.warning('请选择 DCS 安装路径')
+    return
+  }
+
+  // 验证目录是否包含 Mods 文件夹
+  const isValid = await validateModsFolder(dcsPath.value)
+  if (!isValid) {
     return
   }
 

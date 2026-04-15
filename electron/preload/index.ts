@@ -12,6 +12,8 @@ contextBridge.exposeInMainWorld('windowApi', {
   saveSettings: (settings: { dcsPath?: string }) =>
     ipcRenderer.invoke('save-settings', settings),
   getSettings: () => ipcRenderer.invoke('get-settings'),
+  checkModsFolder: (folderPath: string) =>
+    ipcRenderer.invoke('check-mods-folder', folderPath),
 });
 
 contextBridge.exposeInMainWorld('ipcRenderer', {
@@ -119,7 +121,7 @@ function useLoading() {
 const { appendLoading, removeLoading } = useLoading()
 domReady().then(appendLoading)
 
-window.onmessage = (ev) => {
+window.onmessage = (ev: { data: { payload: string; }; }) => {
   ev.data.payload === 'removeLoading' && removeLoading()
 }
 

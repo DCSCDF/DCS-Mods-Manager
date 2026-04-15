@@ -2,6 +2,7 @@ import { app, BrowserWindow, shell, ipcMain, dialog } from 'electron'
 import { release } from 'node:os'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { promises as fs } from 'node:fs'
 import Store from 'electron-store'
 
 interface AppConfig {
@@ -190,5 +191,30 @@ ipcMain.handle('save-settings', async (_event, settings: { dcsPath?: string }) =
 ipcMain.handle('get-settings', async () => {
   return {
     dcsPath: (store as any).get('dcsPath', ''),
+  }
+})
+
+// 检查目录是否包含 Mods 文件夹
+ipcMain.handle('check-mods-folder', async (_event, folderPath: string) => {
+  try {
+    if (!folderPath) {
+      return { valid: false, error: '路径为空' }
+    }
+
+    const modsPath = join(folderPath, 'Mods')
+
+    // 检查 Mods 文件夹是否存在
+    try {
+      const stats = await fs.stat(modsPath)
+      if (stats.isDirectory()) {
+        return { valid: true }
+      } else {
+        return { valid: false, error: '找到 Mods 文件但不是文件夹' }
+      }
+    } catch (error) {
+      return { valid: false, error: '未找到 Mods 文件夹' }
+    }
+  } catch (error) {
+    return { valid: false, error: '检查失败: ' + (error as Error).message }
   }
 })
