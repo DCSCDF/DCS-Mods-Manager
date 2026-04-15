@@ -9,3 +9,17 @@ declare namespace NodeJS {
     VITE_PUBLIC: string
   }
 }
+
+interface WindowApi {
+  minimize: () => void;
+  maximize: () => void;
+  unmaximize: () => void;
+  close: () => void;
+  isMaximized: () => Promise<boolean>;
+}
+
+declare global {
+  interface Window {
+    windowApi: WindowApi;
+  }
+}
