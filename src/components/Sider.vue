@@ -16,7 +16,7 @@
         </a-layout-sider>
 </template>
 <script setup lang="ts">
-import type { CSSProperties } from 'vue';
+import type {CSSProperties, VueElement} from 'vue';
 const siderStyle: CSSProperties = {
         textAlign: 'center',
         color: '#3e3e3e',
@@ -25,10 +25,19 @@ const siderStyle: CSSProperties = {
         position: 'relative',
 };
 
-import { reactive, ref, h } from 'vue';
-import { MailOutlined, AppstoreOutlined, SettingOutlined, MenuUnfoldOutlined, MenuFoldOutlined } from '@ant-design/icons-vue';
+import { reactive, ref, h, computed } from 'vue';
+import { SettingOutlined, AppstoreOutlined } from '@ant-design/icons-vue';
 import type { ItemType } from 'ant-design-vue';
 import type { VNodeChild } from 'vue';
+
+const props = defineProps<{
+        modelValue: string;
+}>();
+
+const emit = defineEmits<{
+        (e: 'update:modelValue', value: string): void;
+        (e: 'change', value: string): void;
+}>();
 
 function getItem(
         label: VueElement | string,
@@ -48,12 +57,17 @@ function getItem(
 
 const collapsed = ref(true);
 const openKeys = ref<string[]>([]);
-const selectedKeys = ref<string[]>([]);
+const selectedKeys = computed(() => [props.modelValue]);
 
 const items: ItemType[] = reactive([
-        getItem('Mod管理', 'sub1', () => h(MailOutlined)),
+        getItem('Mod管理', 'sub1', () => h(AppstoreOutlined)),
         getItem('设置', 'sub2', () => h(SettingOutlined)),
 ]);
+
+const handleClick = (e: { key: string }) => {
+        emit('update:modelValue', e.key);
+        emit('change', e.key);
+};
 
 
 </script>
