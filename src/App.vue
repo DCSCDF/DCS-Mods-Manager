@@ -2,7 +2,7 @@
         <a-layout :style="{ height: '100vh' }">
                 <Header/>
                 <a-layout>
-                        <a-layout-sider :style="siderStyle">Sider</a-layout-sider>
+                        <sider/>
                         <a-layout-content :style="contentStyle">Content</a-layout-content>
                 </a-layout>
                 <a-layout-footer :style="footerStyle">v0.1</a-layout-footer>
@@ -11,24 +11,22 @@
 
 <script lang="ts" setup>
 import type { CSSProperties } from 'vue';
+import Sider from "./components/Sider.vue"
 import Header from "./components/header.vue"
+
+
 const contentStyle: CSSProperties = {
         textAlign: 'center',
-        color: '#c3c3c3',
-        backgroundColor: '#222222',
+        color: '#3e3e3e',
+        backgroundColor: '#f8f8f8',
         minHeight: '0',
         flex: '1 1 auto',
 };
 
-const siderStyle: CSSProperties = {
-        textAlign: 'center',
-        color: '#c3c3c3',
-        backgroundColor: '#373737',
-};
 
 const footerStyle: CSSProperties = {
         color: '#fff',
-        backgroundColor: '#2276ae',
+        backgroundColor: '#4998cc',
         padding: '4px 20px',
 };
 </script>

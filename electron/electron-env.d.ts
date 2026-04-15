@@ -18,8 +18,18 @@ interface WindowApi {
   isMaximized: () => Promise<boolean>;
 }
 
+interface IpcRenderer {
+  on(channel: string, listener: (event: Electron.IpcRendererEvent, ...args: any[]) => void): () => void;
+  off(channel: string, listener?: (event: Electron.IpcRendererEvent, ...args: any[]) => void): void;
+  send(channel: string, ...args: any[]): void;
+  invoke<T = any>(channel: string, ...args: any[]): Promise<T>;
+}
+
 declare global {
   interface Window {
     windowApi: WindowApi;
+    ipcRenderer: IpcRenderer;
   }
 }
+
+export {};

@@ -1,40 +1,38 @@
 <template>
-        <a-layout-header :style="headerStyle">
-                <div class="drag-region">
-                        <span class="app-title">DCS Mods Manager</span>
-                        <div class="window-controls">
-                                <a-tooltip title="最小化">
-                                        <button class="control-btn minimize" @click="minimizeWindow">
-                                                <MinusOutlined />
-                                        </button>
-                                </a-tooltip>
-                                <a-tooltip title="最大化">
-                                        <button class="control-btn maximize" @click="maximizeWindow">
-                                                <BorderOutlined v-if="!isMaximized" />
-                                                <FullscreenExitOutlined v-else />
-                                        </button>
-                                </a-tooltip>
-                                <a-tooltip title="关闭">
-                                        <button class="control-btn close" @click="closeWindow">
-                                                <CloseOutlined />
-                                        </button>
-                                </a-tooltip>
-                        </div>
-                </div>
-        </a-layout-header>
+  <a-layout-header :style="headerStyle" >
+    <div class="drag-region flex justify-between items-center h-full px-2.5 border-b border-neutral-200">
+      <span class="app-title font-medium text-sm no-drag">DCS Mods Manager</span>
+      <div class="window-controls flex gap-0 no-drag">
+
+          <button class="control-btn w-10 h-10 border-none bg-transparent cursor-pointer flex items-center justify-center transition-colors duration-200 hover:bg-black/10" @click="minimizeWindow">
+            <MinusOutlined />
+          </button>
+
+          <button class="control-btn w-10 h-10 border-none bg-transparent cursor-pointer flex items-center justify-center transition-colors duration-200 hover:bg-black/10" @click="maximizeWindow">
+            <BorderOutlined v-if="!isMaximized" />
+            <FullscreenExitOutlined v-else />
+          </button>
+
+          <button class="control-btn w-10 h-10 border-none bg-transparent cursor-pointer flex items-center justify-center transition-colors duration-200 hover:bg-[#e81123] hover:text-white active:bg-[#bf0f1d]" @click="closeWindow">
+            <CloseOutlined />
+          </button>
+
+      </div>
+    </div>
+  </a-layout-header>
 </template>
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue';
-import { MinusOutlined, BorderOutlined, CloseOutlined, FullscreenExitOutlined } from '@ant-design/icons-vue';
+import {onMounted, onUnmounted, ref} from 'vue';
+import {BorderOutlined, CloseOutlined, FullscreenExitOutlined, MinusOutlined} from '@ant-design/icons-vue';
 
 const isMaximized = ref(false);
 
 const headerStyle = {
-        color: '#fff',
-        height: '40px',
-        paddingInline: '0px',
-        lineHeight: '40px',
-        backgroundColor: '#2276ae',
+  color: '#3e3e3e',
+  height: '40px',
+  paddingInline: '0px',
+  lineHeight: '40px',
+  backgroundColor: '#f8f8f8',
 };
 
 const minimizeWindow = () => {
@@ -55,17 +53,15 @@ const closeWindow = () => {
 };
 
 onMounted(() => {
-  window.windowApi.isMaximized().then((maximized) => {
+  window.windowApi.isMaximized().then((maximized: boolean) => {
     isMaximized.value = maximized;
   });
 
   // 监听窗口最大化/还原状态变化
-  const removeListener = window.ipcRenderer.on('window-maximized', (_, isMaximizedState: boolean) => {
+  // 保存移除函数，在组件卸载时调用
+  (window as any).__removeWindowMaximizedListener = window.ipcRenderer.on('window-maximized', (_, isMaximizedState: boolean) => {
     isMaximized.value = isMaximizedState;
   });
-
-  // 保存移除函数，在组件卸载时调用
-  (window as any).__removeWindowMaximizedListener = removeListener;
 });
 
 onUnmounted(() => {
@@ -78,52 +74,9 @@ onUnmounted(() => {
 </script>
 <style scoped>
 .drag-region {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        height: 100%;
-        -webkit-app-region: drag;
-        padding: 0 10px;
+  -webkit-app-region: drag;
 }
-
-.app-title {
-        font-weight: 500;
-        font-size: 14px;
-        -webkit-app-region: no-drag;
-}
-
-.window-controls {
-        display: flex;
-        gap: 0;
-        -webkit-app-region: no-drag;
-}
-
-.control-btn {
-        width: 40px;
-        height: 40px;
-        border: none;
-        background: transparent;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        transition: background-color 0.2s;
-}
-
-.control-btn:hover {
-        background-color: rgba(0, 0, 0, 0.1);
-}
-
-.control-btn.close:hover {
-        background-color: #e81123;
-        color: white;
-}
-
-.control-btn:active {
-        background-color: rgba(0, 0, 0, 0.2);
-}
-
-.control-btn.close:active {
-        background-color: #bf0f1d;
+.no-drag {
+  -webkit-app-region: no-drag;
 }
 </style>

@@ -68,6 +68,8 @@ async function createWindow() {
   // Test actively push message to the Electron-Renderer
   win.webContents.on('did-finish-load', () => {
     win?.webContents.send('main-process-message', new Date().toLocaleString())
+    // 发送当前窗口状态
+    win?.webContents.send('window-maximized', win.isMaximized())
   })
 
   // Make all links open with the browser, not with the application
