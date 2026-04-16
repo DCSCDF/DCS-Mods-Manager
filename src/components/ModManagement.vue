@@ -16,8 +16,10 @@
                                         <a-cascader  style="width: 100px"  placeholder="状态筛选" />
 
                                         <a-input-search
-                                            placeholder="搜索"
-                                            style="width: 200px"
+                                            v-model:value="searchText"
+                                            placeholder="搜索模组名称、作者、简介"
+                                            style="width: 250px"
+                                            @search="handleSearch"
                                         />
 
                                         <a-radio-group>
@@ -107,6 +109,8 @@ import { Modal, message } from 'ant-design-vue';
 const emit = defineEmits(['go-to-settings']);
 const isValidPath = ref(true);
 const loading = ref(false);
+const searchText = ref('');
+const searchMode = ref(false);
 
 // 模组目录树数据
 interface ModTreeNode {
@@ -146,6 +150,34 @@ const data = ref<DataItem[]>([]);
 const modCount = computed(() => {
   return data.value.length;
 });
+
+// 处理搜索
+const handleSearch = (value: string) => {
+  const trimmed = value.trim();
+  
+  if (!trimmed) {
+    // 搜索为空，退出搜索模式，显示当前目录层级的全部内容
+    searchMode.value = false;
+    selectedKeys.value = ['all'];
+    data.value = rawTreeData.value.flatMap(node => flattenMods(node));
+    return;
+  }
+  
+  // 搜索内容，先选中全部
+  selectedKeys.value = ['all'];
+  searchMode.value = true;
+  
+  // 获取全部 mod 并过滤
+  const allMods = rawTreeData.value.flatMap(node => flattenMods(node));
+  const lowerSearch = trimmed.toLowerCase();
+  
+  data.value = allMods.filter(mod => {
+    const nameMatch = mod.displayName.toLowerCase().includes(lowerSearch);
+    const devMatch = mod.developerName.toLowerCase().includes(lowerSearch);
+    const infoMatch = mod.info.toLowerCase().includes(lowerSearch);
+    return nameMatch || devMatch || infoMatch;
+  });
+};
 
 // 递归获取所有 mod
 const getAllMods = (nodes: ModTreeNode[]): ModTreeNode[] => {
@@ -283,6 +315,12 @@ const flattenMods = (node: ModTreeNode): DataItem[] => {
 // 处理树节点选择
 const handleTreeSelect = (keys: string[]) => {
   selectedKeys.value = keys;
+  
+  // 如果之前是搜索模式，清除搜索
+  if (searchMode.value) {
+    searchMode.value = false;
+    searchText.value = '';
+  }
   
   if (keys.length === 0) {
     data.value = [];
