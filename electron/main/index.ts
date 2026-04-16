@@ -228,6 +228,51 @@ interface ModTreeNode {
   path: string
   isMod: boolean
   children?: ModTreeNode[]
+  entryLuaPath?: string  // Entry.lua 文件路径
+  displayName?: string  // 从 Entry.lua 解析
+  version?: string
+  info?: string
+  developerName?: string
+}
+
+// 从 Entry.lua 内容中提取信息
+function parseEntryLua(content: string): { displayName: string; version: string; info: string; developerName: string } {
+  const result = {
+    displayName: '',
+    version: '',
+    info: '',
+    developerName: ''
+  };
+
+  try {
+    // 匹配 displayName = "xxx" 或 displayName = 'xxx'
+    const displayNameMatch = content.match(/displayName\s*=\s*["']([^"']+)["']/);
+    if (displayNameMatch) {
+      result.displayName = displayNameMatch[1];
+    }
+
+    // 匹配 version = "xxx"
+    const versionMatch = content.match(/version\s*=\s*["']([^"']+)["']/);
+    if (versionMatch) {
+      result.version = versionMatch[1];
+    }
+
+    // 匹配 developerName = "xxx"
+    const developerMatch = content.match(/developerName\s*=\s*["']([^"']+)["']/);
+    if (developerMatch) {
+      result.developerName = developerMatch[1];
+    }
+
+    // 匹配 info = _("xxx") - DCS 使用 _() 函数包裹字符串
+    const infoMatch = content.match(/info\s*=\s*_\(["']([^"']+)["']\)/);
+    if (infoMatch) {
+      result.info = infoMatch[1];
+    }
+  } catch (error) {
+    console.error('解析 Entry.lua 失败:', error);
+  }
+
+  return result;
 }
 
 async function scanModsDirectory(dirPath: string, parentKey: string = ''): Promise<ModTreeNode[]> {
@@ -250,13 +295,21 @@ async function scanModsDirectory(dirPath: string, parentKey: string = ''): Promi
       }
 
       if (hasEntryLua) {
-        // 包含 Entry.lua 的文件夹视为一个 mod，不再展开内部内容
+        // 读取并解析 Entry.lua
+        const entryContent = await fs.readFile(entryLuaPath, 'utf-8');
+        const parsed = parseEntryLua(entryContent);
+
         nodes.push({
           title: entry.name,
           key,
           path: fullPath,
           isMod: true,
-          children: []
+          children: [],
+          entryLuaPath,
+          displayName: parsed.displayName || entry.name,
+          version: parsed.version || '未知',
+          info: parsed.info || '未知',
+          developerName: parsed.developerName || '未知'
         })
       } else {
         // 普通文件夹，递归扫描
