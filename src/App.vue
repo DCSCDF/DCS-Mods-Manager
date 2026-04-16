@@ -4,7 +4,7 @@
                 <a-layout :style="{ overflow: 'hidden' }">
                         <sider v-model="currentTab" @change="handleTabChange"/>
                         <a-layout-content :style="contentStyle">
-                                <ModManagement v-if="currentTab === 'sub1'"/>
+                                <ModManagement ref="modManagementRef" v-if="currentTab === 'sub1'" @go-to-settings="goToSettings"/>
                                 <Settings v-else-if="currentTab === 'sub2'"/>
                         </a-layout-content>
                 </a-layout>
@@ -14,12 +14,14 @@
 
 <script lang="ts" setup>
 import type { CSSProperties } from 'vue';
-import { ref } from 'vue';
+import { ref, onMounted } from 'vue';
 import Sider from "./components/Sider.vue"
 import Header from "./components/header.vue"
 import ModManagement from "./components/ModManagement.vue"
 import Settings from "./components/Settings.vue"
 
+// 组件引用
+const modManagementRef = ref<InstanceType<typeof ModManagement> | null>(null);
 
 const contentStyle: CSSProperties = {
 
@@ -42,6 +44,23 @@ const currentTab = ref('sub1');
 const handleTabChange = (key: string) => {
         currentTab.value = key;
 };
+
+// 跳转到设置页面
+const goToSettings = () => {
+        currentTab.value = 'sub2';
+};
+
+// 检查ModManagement组件是否有效路径（用于初始加载时）
+const checkModManagementPath = async () => {
+        if (currentTab.value === 'sub1' && modManagementRef.value?.checkPath) {
+                await modManagementRef.value.checkPath();
+        }
+};
+
+// 页面加载时检查路径
+onMounted(() => {
+        checkModManagementPath();
+});
 </script>
 
 <style>

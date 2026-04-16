@@ -5,7 +5,7 @@
                 <a-menu
                     style="background-color: #f8f8f8 !important;"
                     v-model:openKeys="openKeys"
-                    v-model:selectedKeys="selectedKeys"
+                    :selectedKeys="[modelValue]"
                     mode="inline"
                     :items="items"
                     @click="handleClick"
@@ -27,7 +27,7 @@ const siderStyle: CSSProperties = {
         top: 0,
 };
 
-import { reactive, ref, h, computed } from 'vue';
+import { reactive, ref, h } from 'vue';
 import { SettingOutlined, AppstoreOutlined } from '@ant-design/icons-vue';
 import type { ItemType } from 'ant-design-vue';
 import type { VNodeChild } from 'vue';
@@ -59,7 +59,6 @@ function getItem(
 
 const collapsed = ref(true);
 const openKeys = ref<string[]>([]);
-const selectedKeys = computed(() => [props.modelValue]);
 
 const items: ItemType[] = reactive([
         getItem('Mod管理', 'sub1', () => h(AppstoreOutlined)),

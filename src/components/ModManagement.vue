@@ -98,11 +98,53 @@
 <script setup lang="ts">
 import {CloseOutlined, ExportOutlined, UploadOutlined, DeleteOutlined, SnippetsOutlined} from '@ant-design/icons-vue';
 import type { TreeProps } from 'ant-design-vue';
-import {h, ref} from 'vue';
+import {h, ref, onMounted} from 'vue';
+import { Modal } from 'ant-design-vue';
+import { SettingOutlined } from '@ant-design/icons-vue';
+
+const emit = defineEmits(['go-to-settings']);
 const current1 = ref<number>(1);
+const isValidPath = ref(true);
+
 const onChange = (pageNumber: number) => {
         console.log('Page: ', pageNumber);
 };
+
+// 检查路径是否有效
+const checkPath = async () => {
+        try {
+                if (window.windowApi?.getSettings) {
+                        const settings = await window.windowApi.getSettings();
+                        if (!settings.dcsPath) {
+                                isValidPath.value = false;
+                                Modal.error({
+                                        title: '未配置路径',
+                                        content: '请先在设置页面配置 DCS 安装路径',
+                                        okText: '前往设置',
+                                        maskClosable: false,
+                                        closable: false,
+                                        onOk: () => {
+                                                emit('go-to-settings');
+                                        }
+                                });
+                                return false;
+                        }
+                }
+        } catch (error) {
+                console.error('检查路径失败:', error);
+        }
+        return true;
+};
+
+// 暴露方法给父组件
+defineExpose({
+        checkPath
+});
+
+// 组件挂载时检查路径
+onMounted(() => {
+        checkPath();
+});
 const expandedKeys = ref<string[]>(['0-0', '0-1']);
 const selectedKeys = ref<string[]>([]);
 const treeData: TreeProps['treeData'] = [
