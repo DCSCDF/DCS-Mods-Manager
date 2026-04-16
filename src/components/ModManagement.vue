@@ -24,8 +24,8 @@
 
                                         <a-radio-group>
                                                 <a-radio-button value="large" @click="handleDisableMods" :disabled="selectedMods.length === 0" :loading="disabling">禁用</a-radio-button>
-                                                <a-radio-button value="default">启用</a-radio-button>
-                                                <a-radio-button value="default">删除</a-radio-button>
+                                                <a-radio-button value="default" @click="handleEnableMods" :disabled="selectedDisabledMods.length === 0" :loading="enabling">启用</a-radio-button>
+                                                <a-radio-button value="default" :disabled="true">删除</a-radio-button>
 <!--                                                <a-radio-button value="small">-->
 <!--                                                        <CloseOutlined />-->
 <!--                                                </a-radio-button>-->
@@ -35,10 +35,10 @@
                                 </div>
                                 <div class="flex gap-4">
                                         <a-radio-group>
-                                                <a-radio-button value="large">
+                                                <a-radio-button :disabled="true" value="large">
                                                         <ExportOutlined />
                                                 </a-radio-button>
-                                                <a-radio-button value="default">
+                                                <a-radio-button :disabled="true" value="default">
                                                         <UploadOutlined />
                                                 </a-radio-button>
 <!--                                                <a-radio-button value="small">-->
@@ -133,9 +133,11 @@ const emit = defineEmits(['go-to-settings']);
 const isValidPath = ref(true);
 const loading = ref(false);
 const disabling = ref(false);
+const enabling = ref(false);
 const searchText = ref('');
 const searchMode = ref(false);
 const selectedMods = ref<DataItem[]>([]);
+const selectedDisabledMods = ref<DataItem[]>([]);  // 选中的已禁用 mods
 
 // 模组目录树数据
 interface ModTreeNode {
@@ -568,6 +570,8 @@ const handleDisableMods = () => {
 
         if (successCount > 0) {
           message.success(`成功禁用 ${successCount} 个模组`);
+          // 禁用成功后刷新模组列表
+          await scanModsDirectory();
         }
         if (failCount > 0) {
           message.error(`禁用失败 ${failCount} 个模组: ${errors.join('; ')}`);
@@ -576,6 +580,96 @@ const handleDisableMods = () => {
         message.error('禁用失败: ' + (error as Error).message);
       } finally {
         disabling.value = false;
+      }
+    }
+  });
+};
+
+// 启用选中的 mods（从 disable_mods 移回）
+const handleEnableMods = () => {
+  if (selectedDisabledMods.value.length === 0) {
+    message.warning('请先选择要启用的模组（已禁用的模组）');
+    return;
+  }
+
+  const modNames = selectedDisabledMods.value.map(m => m.displayName).join('、');
+  const count = selectedDisabledMods.value.length;
+
+  Modal.confirm({
+    title: '确认启用',
+    content: `确定要启用以下 ${count} 个模组吗？\n${modNames}\n\n启用后模组将被移动回 Mods 文件夹。`,
+    okText: '确认启用',
+    cancelText: '取消',
+    onOk: async () => {
+      enabling.value = true;
+      let successCount = 0;
+      let failCount = 0;
+      const errors: string[] = [];
+
+      try {
+        // 获取设置（只获取一次）
+        const settings = await window.windowApi?.getSettings();
+        if (!settings?.dcsPath) {
+          message.error('未配置 DCS 路径');
+          return;
+        }
+
+        // 将反斜杠路径转为正斜杠以便统一处理
+        const normalizedDcsPath = settings.dcsPath.replace(/\\/g, '/');
+        const normalizedModsPath = normalizedDcsPath + '/Mods';
+
+        for (const mod of selectedDisabledMods.value) {
+          if (!mod.disabled) continue;
+
+          // 从 originalPath 提取相对于 Mods 的路径
+          // originalPath 格式: D:/DCS/Mods/aircraft/Su-35
+          // 需要得到: aircraft/Su-35
+          let relativePath = '';
+          if (mod.originalPath) {
+            const normalizedOriginal = mod.originalPath.replace(/\\/g, '/');
+            if (normalizedOriginal.startsWith(normalizedModsPath + '/')) {
+              relativePath = normalizedOriginal.substring(normalizedModsPath.length + 1);
+            } else {
+              // 如果格式不对，尝试从 path 字段提取
+              relativePath = mod.path.replace(/\\/g, '/').split('/disable_mods/')[1] || '';
+            }
+          } else if (mod.path) {
+            // 使用 path 中 disable_mods 后面的部分
+            const pathParts = mod.path.replace(/\\/g, '/').split('/disable_mods/');
+            relativePath = pathParts[1] || '';
+          }
+
+          if (!relativePath) {
+            failCount++;
+            errors.push(`${mod.displayName}: 无法确定模组路径`);
+            continue;
+          }
+
+          // 传递禁用路径和原始路径到后端
+          const result = await window.windowApi?.enableMod(relativePath, mod.originalPath);
+          if (result?.success) {
+            successCount++;
+          } else {
+            failCount++;
+            errors.push(`${mod.displayName}: ${result?.error || '未知错误'}`);
+          }
+        }
+
+        // 清理选中状态
+        selectedDisabledMods.value = [];
+
+        if (successCount > 0) {
+          message.success(`成功启用 ${successCount} 个模组`);
+          // 启用成功后刷新模组列表
+          await scanModsDirectory();
+        }
+        if (failCount > 0) {
+          message.error(`启用失败 ${failCount} 个模组: ${errors.join('; ')}`);
+        }
+      } catch (error) {
+        message.error('启用失败: ' + (error as Error).message);
+      } finally {
+        enabling.value = false;
       }
     }
   });
@@ -625,6 +719,7 @@ const rowSelection = ref({
         checkStrictly: false,
         onChange: (_selectedRowKeys: string[], selectedRows: DataItem[]) => {
           selectedMods.value = selectedRows.filter(row => !row.disabled);
+          selectedDisabledMods.value = selectedRows.filter(row => row.disabled);
         }
 });
 
