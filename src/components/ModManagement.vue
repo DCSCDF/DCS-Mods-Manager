@@ -331,6 +331,21 @@ const transformToAntTree = (nodes: ModTreeNode[], parentPath: string = '', isDis
   });
 };
 
+// 获取所有有效的树节点 key
+const getAllTreeKeys = (nodes: any[]): Set<string> => {
+  const keys = new Set<string>();
+  const collectKeys = (nodeList: any[]) => {
+    for (const node of nodeList) {
+      keys.add(node.key);
+      if (node.children && node.children.length > 0) {
+        collectKeys(node.children);
+      }
+    }
+  };
+  collectKeys(nodes);
+  return keys;
+};
+
 // 扫描 Mods 目录
 const scanModsDirectory = async () => {
   loading.value = true;
@@ -407,7 +422,7 @@ const scanModsDirectory = async () => {
         });
       }
       
-      treeData.value = [
+      const newTreeData = [
         {
           title: '全部',
           key: 'all',
@@ -417,7 +432,17 @@ const scanModsDirectory = async () => {
           children: allChildren
         }
       ];
-      expandedKeys.value = ['all'];
+      
+      treeData.value = newTreeData;
+      
+      // 过滤 expandedKeys，只保留存在于新树中的 key
+      const validKeys = getAllTreeKeys(newTreeData);
+      expandedKeys.value = expandedKeys.value.filter(key => validKeys.has(key));
+      
+      // 如果没有展开任何节点，展开 "全部"
+      if (expandedKeys.value.length === 0) {
+        expandedKeys.value = ['all'];
+      }
       selectedKeys.value = ['all'];
 
       // 构建启用 mods 列表
