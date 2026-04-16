@@ -5,13 +5,22 @@ import { fileURLToPath } from 'node:url'
 import { promises as fs } from 'node:fs'
 import Store from 'electron-store'
 
+// 禁用的 mod 信息接口
+interface DisabledModInfo {
+  originalPath: string  // 原存储路径
+  modName: string        // mod 名称
+  disabledAt: string     // 禁用时间
+}
+
 interface AppConfig {
   dcsPath: string
+  disabledMods: DisabledModInfo[]  // 禁用的 mod 列表
 }
 
 const store = new Store<AppConfig>({
   defaults: {
-    dcsPath: ''
+    dcsPath: '',
+    disabledMods: []
   }
 })
 
@@ -330,6 +339,163 @@ async function scanModsDirectory(dirPath: string, parentKey: string = ''): Promi
   return nodes
 }
 
+// 获取禁用的 mods 列表
+ipcMain.handle('get-disabled-mods', async () => {
+  return (store as any).get('disabledMods', [])
+})
+
+// 禁用 mod - 移动到 disable_mods 文件夹
+ipcMain.handle('disable-mod', async (_event, modPath: string) => {
+  try {
+    if (!modPath) {
+      return { success: false, error: 'Mod 路径为空' }
+    }
+
+    // 获取 DCS 路径
+    const dcsPath = (store as any).get('dcsPath', '')
+    if (!dcsPath) {
+      return { success: false, error: '未配置 DCS 路径' }
+    }
+
+    const modsPath = join(dcsPath, 'Mods')
+    // disable_mods 在 DCS 根目录下，而不是 Mods 目录下
+    const disableModsPath = join(dcsPath, 'disable_mods')
+
+    // 检查 mod 路径是否在 Mods 目录下
+    if (!modPath.startsWith(modsPath)) {
+      return { success: false, error: 'Mod 不在 Mods 目录下' }
+    }
+
+    // 获取 mod 相对于 Mods 的路径（保留目录结构）
+    const relativePath = modPath.replace(modsPath + '\\', '').replace(modsPath + '/', '')
+
+    // 目标路径（保留相对路径结构）
+    const targetPath = join(disableModsPath, relativePath)
+    // 确保目标目录存在
+    const targetDir = dirname(targetPath)
+    try {
+      await fs.access(targetDir)
+    } catch {
+      await fs.mkdir(targetDir, { recursive: true })
+    }
+
+    // 检查 disable_mods 下的目标路径是否已存在
+    try {
+      await fs.access(targetPath)
+      return { success: false, error: '该 Mod 已在禁用列表中' }
+    } catch {
+      // 不存在，可以继续
+    }
+
+    // 检查源目录是否存在
+    try {
+      await fs.access(modPath)
+    } catch {
+      return { success: false, error: 'Mod 目录不存在或已被移动' }
+    }
+
+    // 移动文件夹到 disable_mods（保留目录结构）
+    await fs.rename(modPath, targetPath)
+
+    // 保存禁用信息到 store
+    const disabledMods = (store as any).get('disabledMods', [])
+    disabledMods.push({
+      originalPath: modPath,
+      modName: relativePath,  // 使用相对路径作为名称
+      disabledAt: new Date().toISOString()
+    })
+    ;(store as any).set('disabledMods', disabledMods)
+
+    return { success: true }
+  } catch (error) {
+    return { success: false, error: '禁用失败: ' + (error as Error).message }
+  }
+})
+
+// 启用 mod - 从 disable_mods 移回原位置
+ipcMain.handle('enable-mod', async (_event, modName: string) => {
+  try {
+    if (!modName) {
+      return { success: false, error: 'Mod 名称为空' }
+    }
+
+    // 获取 DCS 路径
+    const dcsPath = (store as any).get('dcsPath', '')
+    if (!dcsPath) {
+      return { success: false, error: '未配置 DCS 路径' }
+    }
+
+    const modsPath = join(dcsPath, 'Mods')
+    // disable_mods 在 DCS 根目录下
+    const disableModsPath = join(dcsPath, 'disable_mods')
+    // modName 现在是相对路径（如 aircraft/Su-35_EFM_V2.0.28b）
+    const disabledModPath = join(disableModsPath, modName)
+
+    // 检查 disable_mods 目录下的 mod 是否存在
+    try {
+      await fs.access(disabledModPath)
+    } catch {
+      return { success: false, error: '禁用的 Mod 不存在' }
+    }
+
+    // 从 store 中查找原始路径
+    const disabledMods: DisabledModInfo[] = (store as any).get('disabledMods', [])
+    const modInfo = disabledMods.find(m => m.modName === modName)
+    if (!modInfo) {
+      return { success: false, error: '未找到 Mod 的禁用记录' }
+    }
+
+    // 检查原始路径是否存在（父目录）
+    const originalDir = dirname(modInfo.originalPath)
+    try {
+      await fs.access(originalDir)
+    } catch {
+      // 原始目录不存在，创建它
+      await fs.mkdir(originalDir, { recursive: true })
+    }
+
+    // 移动回原位置
+    await fs.rename(disabledModPath, modInfo.originalPath)
+
+    // 从 store 中移除
+    const updatedDisabledMods = disabledMods.filter(m => m.modName !== modName)
+    ;(store as any).set('disabledMods', updatedDisabledMods)
+
+    return { success: true }
+  } catch (error) {
+    return { success: false, error: '启用失败: ' + (error as Error).message }
+  }
+})
+
+// 获取禁用的 mods 目录树
+ipcMain.handle('scan-disabled-mods-directory', async (_event, basePath: string) => {
+  try {
+    if (!basePath) {
+      return { success: false, error: '路径为空' }
+    }
+
+    // disable_mods 在 DCS 根目录下，而不是 Mods 目录下
+    const disableModsPath = join(basePath, 'disable_mods')
+
+    // 检查 disable_mods 文件夹是否存在
+    try {
+      const stats = await fs.stat(disableModsPath)
+      if (!stats.isDirectory()) {
+        return { success: true, tree: [] }
+      }
+    } catch {
+      return { success: true, tree: [] }
+    }
+
+    // 递归扫描目录
+    const tree = await scanModsDirectory(disableModsPath)
+    return { success: true, tree }
+  } catch (error) {
+    return { success: false, error: '扫描失败: ' + (error as Error).message }
+  }
+})
+
+// 扫描 Mods 目录的 IPC handler
 ipcMain.handle('scan-mods-directory', async (_event, basePath: string) => {
   try {
     if (!basePath) {

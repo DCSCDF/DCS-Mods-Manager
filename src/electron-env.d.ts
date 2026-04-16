@@ -12,6 +12,23 @@ interface ScanModsResult {
   error?: string;
 }
 
+// 禁用的 mod 信息
+interface DisabledModInfo {
+  originalPath: string;
+  modName: string;
+  disabledAt: string;
+}
+
+interface DisableModResult {
+  success: boolean;
+  error?: string;
+}
+
+interface EnableModResult {
+  success: boolean;
+  error?: string;
+}
+
 interface WindowApi {
   minimize: () => void;
   maximize: () => void;
@@ -23,6 +40,10 @@ interface WindowApi {
   getSettings: () => Promise<{ dcsPath: string }>;
   checkModsFolder: (folderPath: string) => Promise<{ valid: boolean; error?: string }>;
   scanModsDirectory: (basePath: string) => Promise<ScanModsResult>;
+  disableMod: (modPath: string) => Promise<DisableModResult>;
+  enableMod: (modName: string) => Promise<EnableModResult>;
+  getDisabledMods: () => Promise<DisabledModInfo[]>;
+  scanDisabledModsDirectory: (basePath: string) => Promise<ScanModsResult>;
 }
 
 interface IpcRenderer {

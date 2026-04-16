@@ -16,6 +16,15 @@ contextBridge.exposeInMainWorld('windowApi', {
     ipcRenderer.invoke('check-mods-folder', folderPath),
   scanModsDirectory: (basePath: string) =>
     ipcRenderer.invoke('scan-mods-directory', basePath),
+  // 禁用/启用 mod 相关 API
+  disableMod: (modPath: string) =>
+    ipcRenderer.invoke('disable-mod', modPath),
+  enableMod: (modName: string) =>
+    ipcRenderer.invoke('enable-mod', modName),
+  getDisabledMods: () =>
+    ipcRenderer.invoke('get-disabled-mods'),
+  scanDisabledModsDirectory: (basePath: string) =>
+    ipcRenderer.invoke('scan-disabled-mods-directory', basePath),
 });
 
 contextBridge.exposeInMainWorld('ipcRenderer', {
