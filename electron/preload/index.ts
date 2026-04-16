@@ -19,8 +19,8 @@ contextBridge.exposeInMainWorld('windowApi', {
   // 禁用/启用 mod 相关 API
   disableMod: (modPath: string) =>
     ipcRenderer.invoke('disable-mod', modPath),
-  enableMod: (modName: string) =>
-    ipcRenderer.invoke('enable-mod', modName),
+  enableMod: (disabledModPath: string, originalPath?: string) =>
+    ipcRenderer.invoke('enable-mod', disabledModPath, originalPath),
   getDisabledMods: () =>
     ipcRenderer.invoke('get-disabled-mods'),
   scanDisabledModsDirectory: (basePath: string) =>

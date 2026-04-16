@@ -285,54 +285,71 @@ function parseEntryLua(content: string): { displayName: string; version: string;
 }
 
 async function scanModsDirectory(dirPath: string, parentKey: string = ''): Promise<ModTreeNode[]> {
-  const entries = await fs.readdir(dirPath, { withFileTypes: true })
   const nodes: ModTreeNode[] = []
 
-  for (const entry of entries) {
+  // 获取当前目录名称
+  const dirName = dirPath.split(/[/\\]/).pop() || ''
+
+  // 检查当前目录是否直接包含 Entry.lua 文件（独立 mod）
+  const currentEntryLuaPath = join(dirPath, 'Entry.lua')
+  let currentHasEntryLua = false
+  let currentEntryContent = ''
+  try {
+    const stats = await fs.stat(currentEntryLuaPath)
+    currentHasEntryLua = stats.isFile()
+    if (currentHasEntryLua) {
+      currentEntryContent = await fs.readFile(currentEntryLuaPath, 'utf-8')
+    }
+  } catch {
+    currentHasEntryLua = false
+  }
+
+  // 扫描当前目录下的所有子文件夹
+  const entries = await fs.readdir(dirPath, { withFileTypes: true })
+  const subDirs = entries.filter(entry => entry.isDirectory())
+
+  // 如果当前目录有 Entry.lua，它本身就是一个 mod
+  if (currentHasEntryLua) {
+    const parsed = parseEntryLua(currentEntryContent)
+
+    nodes.push({
+      title: dirName,
+      key: parentKey || dirName,
+      path: dirPath,
+      isMod: true,
+      children: [],
+      entryLuaPath: currentEntryLuaPath,
+      displayName: parsed.displayName || dirName,
+      version: parsed.version || '未知',
+      info: parsed.info || '未知',
+      developerName: parsed.developerName || '未知'
+    })
+  }
+
+  // 递归处理所有子文件夹
+  for (const entry of subDirs) {
     const fullPath = join(dirPath, entry.name)
     const key = parentKey ? `${parentKey}/${entry.name}` : entry.name
 
-    if (entry.isDirectory()) {
-      const entryLuaPath = join(fullPath, 'Entry.lua')
-      let hasEntryLua = false
+    const children = await scanModsDirectory(fullPath, key)
 
-      try {
-        await fs.access(entryLuaPath)
-        hasEntryLua = true
-      } catch {
-        hasEntryLua = false
-      }
-
-      if (hasEntryLua) {
-        // 读取并解析 Entry.lua
-        const entryContent = await fs.readFile(entryLuaPath, 'utf-8');
-        const parsed = parseEntryLua(entryContent);
-
-        nodes.push({
-          title: entry.name,
-          key,
-          path: fullPath,
-          isMod: true,
-          children: [],
-          entryLuaPath,
-          displayName: parsed.displayName || entry.name,
-          version: parsed.version || '未知',
-          info: parsed.info || '未知',
-          developerName: parsed.developerName || '未知'
-        })
-      } else {
-        // 普通文件夹，递归扫描
-        const children = await scanModsDirectory(fullPath, key)
-        if (children.length > 0) {
-          nodes.push({
-            title: entry.name,
-            key,
-            path: fullPath,
-            isMod: false,
-            children
-          })
-        }
-      }
+    if (children.length > 0) {
+      nodes.push({
+        title: entry.name,
+        key,
+        path: fullPath,
+        isMod: false,
+        children
+      })
+    } else {
+      // 即使子文件夹没有任何 mod，也显示它作为空容器
+      nodes.push({
+        title: entry.name,
+        key,
+        path: fullPath,
+        isMod: false,
+        children: []
+      })
     }
   }
 
@@ -344,7 +361,7 @@ ipcMain.handle('get-disabled-mods', async () => {
   return (store as any).get('disabledMods', [])
 })
 
-// 禁用 mod - 移动到 disable_mods 文件夹
+// 禁用 mod - 移动 Entry.lua 文件到 disable_mods 文件夹
 ipcMain.handle('disable-mod', async (_event, modPath: string) => {
   try {
     if (!modPath) {
@@ -367,44 +384,51 @@ ipcMain.handle('disable-mod', async (_event, modPath: string) => {
       return { success: false, error: 'Mod 不在 Mods 目录下' }
     }
 
-    // 获取 mod 相对于 Mods 的路径（保留目录结构，使用正斜杠）
+    // 检查 Entry.lua 是否存在
+    const entryLuaPath = join(modPath, 'Entry.lua')
+    try {
+      await fs.access(entryLuaPath)
+    } catch {
+      return { success: false, error: 'Entry.lua 文件不存在' }
+    }
+
+    // 获取 mod 相对于 Mods 的路径
     const relativePath = normalizedModPath.replace(modsPath + '/', '')
 
     // disable_mods 在 DCS 根目录下
     const disableModsPath = normalizedDcsPath + '/disable_mods'
     // 目标路径（保留相对路径结构）
-    const targetPath = join(disableModsPath, relativePath)
+    const targetDir = join(disableModsPath, relativePath)
+
     // 确保目标目录存在
-    const targetDir = dirname(targetPath)
     try {
       await fs.access(targetDir)
     } catch {
       await fs.mkdir(targetDir, { recursive: true })
     }
 
-    // 检查 disable_mods 下的目标路径是否已存在
+    // 目标 Entry.lua 路径
+    const targetEntryLuaPath = join(targetDir, 'Entry.lua')
+
+    // 检查目标 Entry.lua 是否已存在
     try {
-      await fs.access(targetPath)
+      await fs.access(targetEntryLuaPath)
       return { success: false, error: '该 Mod 已在禁用列表中' }
     } catch {
       // 不存在，可以继续
     }
 
-    // 检查源目录是否存在
-    try {
-      await fs.access(modPath)
-    } catch {
-      return { success: false, error: 'Mod 目录不存在或已被移动' }
-    }
+    // 复制 Entry.lua 文件到目标位置
+    await fs.copyFile(entryLuaPath, targetEntryLuaPath)
 
-    // 移动文件夹到 disable_mods（保留目录结构）
-    await fs.rename(modPath, targetPath)
+    // 删除源 Entry.lua 文件
+    await fs.unlink(entryLuaPath)
 
-    // 保存禁用信息到 store（使用正斜杠路径）
+    // 保存禁用信息到 store
     const disabledMods = (store as any).get('disabledMods', [])
     disabledMods.push({
       originalPath: normalizedModPath,
-      modName: relativePath,  // 使用正斜杠相对路径
+      modName: relativePath,
       disabledAt: new Date().toISOString()
     })
     ;(store as any).set('disabledMods', disabledMods)
@@ -415,7 +439,7 @@ ipcMain.handle('disable-mod', async (_event, modPath: string) => {
   }
 })
 
-// 启用 mod - 从 disable_mods 移回原位置
+// 启用 mod - 从 disable_mods 复制 Entry.lua 回原位置
 ipcMain.handle('enable-mod', async (_event, disabledModPath: string, originalPath?: string) => {
   try {
     if (!disabledModPath) {
@@ -434,67 +458,71 @@ ipcMain.handle('enable-mod', async (_event, disabledModPath: string, originalPat
     const normalizedDisabledModPath = disabledModPath.replace(/\\/g, '/')
 
     // 构建禁用 mod 的完整路径
-    const disabledModFullPath = join(disableModsPath, normalizedDisabledModPath)
+    const disabledModDir = join(disableModsPath, normalizedDisabledModPath)
+    const disabledEntryLuaPath = join(disabledModDir, 'Entry.lua')
 
-    // 检查 disable_mods 目录下的 mod 是否存在
+    // 检查 disable_mods 目录下的 Entry.lua 是否存在
     try {
-      await fs.access(disabledModFullPath)
+      await fs.access(disabledEntryLuaPath)
     } catch {
-      return { success: false, error: '禁用的 Mod 不存在: ' + disabledModFullPath }
+      return { success: false, error: '禁用的 Entry.lua 不存在' }
     }
 
     // 确定目标路径
     let targetPath: string
     if (originalPath) {
-      // 如果提供了原始路径，规范化它
       targetPath = originalPath.replace(/\\/g, '/')
     } else {
-      // 否则从 store 中查找（使用多种路径格式匹配）
       const disabledMods: DisabledModInfo[] = (store as any).get('disabledMods', [])
-      const normalizedPath = normalizedDisabledModPath
-
-      // 尝试多种匹配方式
       const modInfo = disabledMods.find(m => {
         const storedModName = m.modName.replace(/\\/g, '/')
-        const storedModNameBackslash = m.modName.replace(/\//g, '\\')
-        return storedModName === normalizedPath ||
-               storedModNameBackslash === normalizedPath ||
-               normalizedPath.endsWith(storedModName) ||
-               storedModName.endsWith(normalizedPath)
+        return storedModName === normalizedDisabledModPath
       })
 
       if (!modInfo) {
-        return { success: false, error: '未找到 Mod 的禁用记录: ' + normalizedPath }
+        return { success: false, error: '未找到 Mod 的禁用记录' }
       }
       targetPath = modInfo.originalPath.replace(/\\/g, '/')
     }
 
-    // 确保目标目录存在
-    const targetDir = dirname(targetPath)
-    try {
-      await fs.access(targetDir)
-    } catch {
-      await fs.mkdir(targetDir, { recursive: true })
-    }
+    // 目标 Entry.lua 路径
+    const targetEntryLuaPath = join(targetPath, 'Entry.lua')
 
-    // 检查目标是否已存在
+    // 确保目标目录存在
     try {
       await fs.access(targetPath)
-      return { success: false, error: '目标位置已存在同名文件' }
+    } catch {
+      await fs.mkdir(targetPath, { recursive: true })
+    }
+
+    // 检查目标 Entry.lua 是否已存在
+    try {
+      await fs.access(targetEntryLuaPath)
+      return { success: false, error: '目标位置已存在 Entry.lua' }
     } catch {
       // 不存在，可以继续
     }
 
-    // 移动回原位置
-    await fs.rename(disabledModFullPath, targetPath)
+    // 复制 Entry.lua 文件回原位置
+    await fs.copyFile(disabledEntryLuaPath, targetEntryLuaPath)
 
-    // 从 store 中移除（使用兼容的路径匹配）
+    // 删除 disable_mods 中的 Entry.lua 文件
+    await fs.unlink(disabledEntryLuaPath)
+
+    // 尝试删除空的父目录
+    try {
+      const entries = await fs.readdir(disabledModDir)
+      if (entries.length === 0) {
+        await fs.rmdir(disabledModDir)
+      }
+    } catch {
+      // 目录非空或有错误，忽略
+    }
+
+    // 从 store 中移除记录
     const disabledMods = (store as any).get('disabledMods', [])
-    const normalizedPath = normalizedDisabledModPath
     const updatedDisabledMods = disabledMods.filter((m: DisabledModInfo) => {
-      const storedModName = m.modName.replace(/\\/g, '/')
-      // 移除匹配到的记录
-      return storedModName !== normalizedPath
+      return m.modName.replace(/\\/g, '/') !== normalizedDisabledModPath
     })
     ;(store as any).set('disabledMods', updatedDisabledMods)
 

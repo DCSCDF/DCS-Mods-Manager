@@ -41,7 +41,7 @@ interface WindowApi {
   checkModsFolder: (folderPath: string) => Promise<{ valid: boolean; error?: string }>;
   scanModsDirectory: (basePath: string) => Promise<ScanModsResult>;
   disableMod: (modPath: string) => Promise<DisableModResult>;
-  enableMod: (modName: string) => Promise<EnableModResult>;
+  enableMod: (disabledModPath: string, originalPath?: string) => Promise<EnableModResult>;
   getDisabledMods: () => Promise<DisabledModInfo[]>;
   scanDisabledModsDirectory: (basePath: string) => Promise<ScanModsResult>;
 }

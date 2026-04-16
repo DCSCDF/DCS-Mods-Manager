@@ -13,7 +13,15 @@
 
                         <div class="flex items-center justify-between mb-3">
                                 <div class="flex gap-4">
-                                        <a-cascader  style="width: 100px"  placeholder="状态筛选" />
+                                        <a-select
+                                            v-model:value="statusFilter"
+                                            style="width: 100px"
+                                            @change="handleStatusFilterChange"
+                                        >
+                                                <a-select-option value="all">全部</a-select-option>
+                                                <a-select-option value="enabled">启用</a-select-option>
+                                                <a-select-option value="disabled">禁用</a-select-option>
+                                        </a-select>
 
                                         <a-input-search
                                             v-model:value="searchText"
@@ -136,6 +144,7 @@ const disabling = ref(false);
 const enabling = ref(false);
 const searchText = ref('');
 const searchMode = ref(false);
+const statusFilter = ref('all');  // 状态筛选: all | enabled | disabled
 const selectedMods = ref<DataItem[]>([]);
 const selectedDisabledMods = ref<DataItem[]>([]);  // 选中的已禁用 mods
 
@@ -186,29 +195,61 @@ const modCount = computed(() => {
 // 处理搜索
 const handleSearch = (value: string) => {
   const trimmed = value.trim();
-  
+
   if (!trimmed) {
     // 搜索为空，退出搜索模式，显示当前目录层级的全部内容
     searchMode.value = false;
     selectedKeys.value = ['all'];
-    data.value = rawTreeData.value.flatMap(node => flattenMods(node));
+    // 根据状态筛选显示数据
+    if (statusFilter.value === 'all') {
+      const enabledMods = rawTreeData.value.flatMap(node => flattenMods(node));
+      const disabledMods = rawDisabledTreeData.value.flatMap(node => flattenMods(node, true));
+      data.value = [...enabledMods, ...disabledMods];
+    } else if (statusFilter.value === 'enabled') {
+      data.value = rawTreeData.value.flatMap(node => flattenMods(node));
+    } else {
+      data.value = rawDisabledTreeData.value.flatMap(node => flattenMods(node, true));
+    }
     return;
   }
-  
+
   // 搜索内容，先选中全部
   selectedKeys.value = ['all'];
   searchMode.value = true;
-  
-  // 获取全部 mod 并过滤
-  const allMods = rawTreeData.value.flatMap(node => flattenMods(node));
+
+  // 获取全部 mod 并过滤（启用 + 禁用）
+  const enabledMods = rawTreeData.value.flatMap(node => flattenMods(node));
+  const disabledMods = rawDisabledTreeData.value.flatMap(node => flattenMods(node, true));
+  const allMods = [...enabledMods, ...disabledMods];
   const lowerSearch = trimmed.toLowerCase();
-  
-  data.value = allMods.filter(mod => {
+
+  let result = allMods.filter(mod => {
     const nameMatch = mod.displayName.toLowerCase().includes(lowerSearch);
     const devMatch = mod.developerName.toLowerCase().includes(lowerSearch);
     const infoMatch = mod.info.toLowerCase().includes(lowerSearch);
     return nameMatch || devMatch || infoMatch;
   });
+
+  // 应用状态筛选
+  if (statusFilter.value !== 'all') {
+    if (statusFilter.value === 'enabled') {
+      result = result.filter(mod => !mod.disabled);
+    } else if (statusFilter.value === 'disabled') {
+      result = result.filter(mod => mod.disabled);
+    }
+  }
+
+  data.value = result;
+};
+
+// 处理状态筛选变化
+const handleStatusFilterChange = () => {
+  // 清除搜索状态
+  searchMode.value = false;
+  searchText.value = '';
+
+  // 根据当前选中的目录和筛选条件刷新数据
+  handleTreeSelect(selectedKeys.value);
 };
 
 // 递归获取所有 mod
@@ -435,22 +476,23 @@ const handleTreeSelect = (keys: string[]) => {
   }
 
   const selectedKey = keys[0];
+  let result: DataItem[] = [];
 
   if (selectedKey === 'all') {
     // 显示全部（启用 + 禁用）
     const enabledMods = rawTreeData.value.flatMap(node => flattenMods(node));
     const disabledMods = rawDisabledTreeData.value.flatMap(node => flattenMods(node, true));
-    data.value = [...enabledMods, ...disabledMods];
+    result = [...enabledMods, ...disabledMods];
   } else if (selectedKey === 'disabled') {
     // 显示所有禁用的 mods
-    data.value = rawDisabledTreeData.value.flatMap(node => flattenMods(node, true));
+    result = rawDisabledTreeData.value.flatMap(node => flattenMods(node, true));
   } else if (selectedKey.startsWith('disabled/')) {
     // 禁用区域的节点
     const searchKey = selectedKey.substring(9); // 去掉 "disabled/" 前缀
     const node = findNodeByKey(rawDisabledTreeData.value, 'disabled/' + searchKey);
     if (node) {
       if (node.isMod) {
-        data.value = [{
+        result = [{
           key: selectedKey,
           displayName: node.displayName || node.originTitle || node.title,
           version: node.version || '未知',
@@ -461,7 +503,7 @@ const handleTreeSelect = (keys: string[]) => {
           path: node.path
         }];
       } else {
-        data.value = (node.children || []).flatMap(child => flattenMods(child, true));
+        result = (node.children || []).flatMap(child => flattenMods(child, true));
       }
     }
   } else {
@@ -469,7 +511,7 @@ const handleTreeSelect = (keys: string[]) => {
     const node = findNodeByKey(rawTreeData.value, selectedKey);
     if (node) {
       if (node.isMod) {
-        data.value = [{
+        result = [{
           key: node.key,
           displayName: node.displayName || node.originTitle || node.title,
           version: node.version || '未知',
@@ -480,10 +522,21 @@ const handleTreeSelect = (keys: string[]) => {
           path: node.path
         }];
       } else {
-        data.value = (node.children || []).flatMap(child => flattenMods(child, false));
+        result = (node.children || []).flatMap(child => flattenMods(child, false));
       }
     }
   }
+
+  // 应用状态筛选
+  if (statusFilter.value !== 'all') {
+    if (statusFilter.value === 'enabled') {
+      result = result.filter(mod => !mod.disabled);
+    } else if (statusFilter.value === 'disabled') {
+      result = result.filter(mod => mod.disabled);
+    }
+  }
+
+  data.value = result;
 };
 
 // 根据 key 查找节点（支持带前缀的 key）
