@@ -32,7 +32,7 @@ import { SettingOutlined, AppstoreOutlined } from '@ant-design/icons-vue';
 import type { ItemType } from 'ant-design-vue';
 import type { VNodeChild } from 'vue';
 
-const props = defineProps<{
+defineProps<{
         modelValue: string;
 }>();
 

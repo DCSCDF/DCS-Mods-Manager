@@ -96,11 +96,10 @@
 </template>
 
 <script setup lang="ts">
-import {CloseOutlined, ExportOutlined, UploadOutlined, DeleteOutlined, SnippetsOutlined} from '@ant-design/icons-vue';
+import {ExportOutlined, UploadOutlined, SnippetsOutlined} from '@ant-design/icons-vue';
 import type { TreeProps } from 'ant-design-vue';
 import {h, ref, onMounted} from 'vue';
 import { Modal } from 'ant-design-vue';
-import { SettingOutlined } from '@ant-design/icons-vue';
 
 const emit = defineEmits(['go-to-settings']);
 const current1 = ref<number>(1);
