@@ -43,18 +43,24 @@
 <!--                                                        <DeleteOutlined />-->
 <!--                                                </a-radio-button>-->
                                         </a-radio-group>
-                                        <a-button type="primary">刷新</a-button>
+                                        <a-button type="primary" @click="refreshMods" :loading="loading">
+                                                <template #icon>
+                                                        <ReloadOutlined />
+                                                </template>
+                                                刷新
+                                        </a-button>
                                 </div>
                         </div>
                 <div class="flex flex-row ">
                         <div>
-                                <a-card size="small" class="mr-3!" title="模组目录" style="width: 220px">
-
+                                <a-card size="small" class="mr-3!" title="模组目录" style="width: 230px">
+                                        <a-spin v-if="loading" />
                                         <a-directory-tree
+                                            v-else
                                             v-model:expandedKeys="expandedKeys"
                                             v-model:selectedKeys="selectedKeys"
-                                            multiple
                                             :tree-data="treeData"
+                                            @select="handleTreeSelect"
                                         ></a-directory-tree>
                                 </a-card>
                         </div>
@@ -62,11 +68,11 @@
                                 <a-card size="small"  class="mb-3!">
                                         <div class="flex items-center justify-between">
                                                 <div class="flex items-center">
-                                                        <h1 class="text-gray-500">共 10 个模组</h1>
+                                                        <h1 class="text-gray-500">共 {{ modCount }} 个模组</h1>
                                                 </div>
-                                                <div>
-                                                        <a-pagination v-model:current="current1" size="small" show-quick-jumper :total="50" @change="onChange" />
-                                                </div>
+<!--                                                <div>-->
+<!--                                                        <a-pagination v-model:current="current1" size="small" show-quick-jumper :total="50" @change="onChange" />-->
+<!--                                                </div>-->
                                         </div>
                                 </a-card>
 
@@ -96,17 +102,117 @@
 </template>
 
 <script setup lang="ts">
-import {ExportOutlined, UploadOutlined, SnippetsOutlined} from '@ant-design/icons-vue';
-import type { TreeProps } from 'ant-design-vue';
-import {h, ref, onMounted} from 'vue';
-import { Modal } from 'ant-design-vue';
+import {ExportOutlined, UploadOutlined,  ReloadOutlined} from '@ant-design/icons-vue';
+
+import { ref, onMounted, computed} from 'vue';
+import { Modal, message } from 'ant-design-vue';
 
 const emit = defineEmits(['go-to-settings']);
-const current1 = ref<number>(1);
 const isValidPath = ref(true);
+const loading = ref(false);
 
-const onChange = (pageNumber: number) => {
-        console.log('Page: ', pageNumber);
+// 模组目录树数据
+interface ModTreeNode {
+  title: string
+  key: string
+  path: string
+  isMod: boolean
+  children?: ModTreeNode[]
+  scopedSlots?: { icon: string }
+}
+
+const treeData = ref<ModTreeNode[]>([]);
+const expandedKeys = ref<string[]>([]);
+const selectedKeys = ref<string[]>([]);
+
+// 模组数量
+const modCount = computed(() => {
+  let count = 0;
+  const countMods = (nodes: ModTreeNode[]) => {
+    for (const node of nodes) {
+      if (node.isMod) {
+        count++;
+      }
+      if (node.children) {
+        countMods(node.children);
+      }
+    }
+  };
+  countMods(treeData.value);
+  return count;
+});
+
+// const onChange = (pageNumber: number) => {
+//         console.log('Page: ', pageNumber);
+// };
+
+// 扫描 Mods 目录
+const scanModsDirectory = async () => {
+  loading.value = true;
+  try {
+    if (!window.windowApi?.getSettings) {
+      console.error('windowApi.getSettings 不可用');
+      return;
+    }
+
+    const settings = await window.windowApi.getSettings();
+    if (!settings.dcsPath) {
+      isValidPath.value = false;
+      return;
+    }
+
+    if (!window.windowApi?.scanModsDirectory) {
+      console.error('windowApi.scanModsDirectory 不可用');
+      return;
+    }
+
+    const result = await window.windowApi.scanModsDirectory(settings.dcsPath);
+    if (result.success && result.tree) {
+      treeData.value = transformToAntTree(result.tree);
+      expandedKeys.value = treeData.value.map(node => node.key);
+      message.success('模组目录加载成功');
+    } else {
+      message.error(result.error || '扫描失败');
+    }
+  } catch (error) {
+    console.error('扫描 Mods 目录失败:', error);
+    message.error('扫描失败: ' + (error as Error).message);
+  } finally {
+    loading.value = false;
+  }
+};
+
+// 截断过长的名称
+const truncateText = (text: string, maxLength: number = 15): string => {
+  if (text.length > maxLength) {
+    return text.slice(0, maxLength) + '...';
+  }
+  return text;
+};
+
+// 转换数据为 Ant Design Tree 格式
+const transformToAntTree = (nodes: ModTreeNode[]): ModTreeNode[] => {
+  return nodes.map(node => ({
+    title: truncateText(node.title),
+    key: node.key,
+    path: node.path,
+    isMod: node.isMod,
+    children: node.children && node.children.length > 0 ? transformToAntTree(node.children) : undefined,
+    scopedSlots: {
+      icon: node.isMod ? 'FileTextOutlined' : 'FolderOutlined'
+    }
+  }));
+};
+
+// 处理树节点选择
+const handleTreeSelect = (keys: string[]) => {
+  console.log('选中的节点:', keys);
+  selectedKeys.value = keys;
+};
+
+// 刷新模组列表
+const refreshMods = () => {
+  scanModsDirectory();
 };
 
 // 检查路径是否有效
@@ -137,54 +243,21 @@ const checkPath = async () => {
 
 // 暴露方法给父组件
 defineExpose({
-        checkPath
+        checkPath,
+        refreshMods
 });
 
-// 组件挂载时检查路径
-onMounted(() => {
-        checkPath();
+// 组件挂载时检查路径并扫描
+onMounted(async () => {
+        const pathValid = await checkPath();
+        if (pathValid) {
+                await scanModsDirectory();
+        }
 });
-const expandedKeys = ref<string[]>(['0-0', '0-1']);
-const selectedKeys = ref<string[]>([]);
-const treeData: TreeProps['treeData'] = [
-        {
-                title: '全部',
-                key: '0',
-            icon: () => h(SnippetsOutlined),
-        },
-        {
-                title: 'parent 0',
-                key: '0-0',
-                children: [
-                        {
-                                title: 'leaf 0-0',
-                                key: '0-0-0',
-                                isLeaf: true,
-                        },
-                        {
-                                title: 'leaf 0-1',
-                                key: '0-0-1',
-                                isLeaf: true,
-                        },
-                ],
-        },
-        {
-                title: 'parent 1',
-                key: '0-1',
-                children: [
-                        {
-                                title: 'leaf 1-0',
-                                key: '0-1-0',
-                                isLeaf: true,
-                        },
-                        {
-                                title: 'leaf 1-1',
-                                key: '0-1-1',
-                                isLeaf: true,
-                        },
-                ],
-        },
-];
+
+const rowSelection = ref({
+        checkStrictly: false,
+});
 
 const columns = [
         {
@@ -234,94 +307,16 @@ interface DataItem {
         children?: DataItem[];
 }
 
-const data: DataItem[] = [
-        {
-                key: 1,
-                displayName: 'John Brown sr.',
-                isUse: true,
-                version: "2.0.2812",
-                developerName: 'New York No. 1 Lake Park',
-                info: "",
-                children: [
-                        {
-                                key: 11,
-                                displayName: 'John Brown',
-                                isUse: true,
-                                version: "6.1.0",
-                                developerName: 'New York No. 2 Lake Park',
-                                info: ""
-                        },
-                        {
-                                key: 12,
-                                displayName: 'John Brown jr.',
-                                isUse: true,
-                                version: "6.1.0",
-                                developerName: 'New York No. 3 Lake Park',
-                                info: "",
-                                children: [
-                                        {
-                                                key: 121,
-                                                displayName: 'Jimmy Brown',
-                                                isUse: true,
-                                                version: "6.1.0",
-                                                developerName: 'New York No. 3 Lake Park',
-                                                info: ""
-                                        },
-                                ],
-                        },
-                        {
-                                key: 13,
-                                displayName: 'Jim Green sr.',
-                                isUse: true,
-                                version: "6.1.0",
-                                developerName: 'London No. 1 Lake Park',
-                                info: "The Sukhoi Su-35 (NATO reporting name: Flanker-E) is the designation for two separate, heavily-upgraded derivatives of the Su-27 air-defence fighter. They are single-seat, twin-engine, highly-maneuverable aircraft, designed by the Sukhoi Design Bureau and built by the Komsomolsk-on-Amur Aircraft Production Association.",
-                                children: [
-                                        {
-                                                key: 131,
-                                                displayName: 'Jim Green',
-                                                isUse: true,
-                                                version: "6.1.0",
-                                                developerName: 'London No. 2 Lake Park',
-                                                info: "",
-                                                children: [
-                                                        {
-                                                                key: 1311,
-                                                                displayName: 'Jim Green jr.',
-                                                                isUse: true,
-                                                                version: "6.1.0",
-                                                                developerName: 'London No. 3 Lake Park',
-                                                                info: ""
-                                                        },
-                                                        {
-                                                                key: 1312,
-                                                                displayName: 'Jimmy Green sr.',
-                                                                isUse: true,
-                                                                version: "6.1.0",
-                                                                developerName: 'London No. 4 Lake Park',
-                                                                info: ""
-                                                        },
-                                                ],
-                                        },
-                                ],
-                        },
-                ],
-        },
-        {
-                key: 2,
-                displayName: 'Joe Black',
-                isUse: false,
-                version: "6.1.0",
-                developerName: 'Sidney No. 1 Lake Park',
-                info: "The Sukhoi Su-35 (NATO reporting name: Flanker-E) is the designation for two separate, heavily-upgraded derivatives of the Su-27 air-defence fighter. They are single-seat, twin-engine, highly-maneuverable aircraft, designed by the Sukhoi Design Bureau and built by the Komsomolsk-on-Amur Aircraft Production Association."
-        },
-];
-
-const rowSelection = ref({
-        checkStrictly: false,
-});
+const data: DataItem[] = [];
 </script>
 
 <style scoped>
-
+/deep/ .ant-tree-title {
+  display: inline-block;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
 </style>

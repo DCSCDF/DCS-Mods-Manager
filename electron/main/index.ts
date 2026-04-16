@@ -220,3 +220,85 @@ ipcMain.handle('check-mods-folder', async (_event, folderPath: string) => {
     return { valid: false, error: '检查失败: ' + (error as Error).message }
   }
 })
+
+// 递归扫描 Mods 文件夹，返回目录树结构
+interface ModTreeNode {
+  title: string
+  key: string
+  path: string
+  isMod: boolean
+  children?: ModTreeNode[]
+}
+
+async function scanModsDirectory(dirPath: string, parentKey: string = ''): Promise<ModTreeNode[]> {
+  const entries = await fs.readdir(dirPath, { withFileTypes: true })
+  const nodes: ModTreeNode[] = []
+
+  for (const entry of entries) {
+    const fullPath = join(dirPath, entry.name)
+    const key = parentKey ? `${parentKey}/${entry.name}` : entry.name
+
+    if (entry.isDirectory()) {
+      const entryLuaPath = join(fullPath, 'Entry.lua')
+      let hasEntryLua = false
+
+      try {
+        await fs.access(entryLuaPath)
+        hasEntryLua = true
+      } catch {
+        hasEntryLua = false
+      }
+
+      if (hasEntryLua) {
+        // 包含 Entry.lua 的文件夹视为一个 mod，不再展开内部内容
+        nodes.push({
+          title: entry.name,
+          key,
+          path: fullPath,
+          isMod: true,
+          children: []
+        })
+      } else {
+        // 普通文件夹，递归扫描
+        const children = await scanModsDirectory(fullPath, key)
+        if (children.length > 0) {
+          nodes.push({
+            title: entry.name,
+            key,
+            path: fullPath,
+            isMod: false,
+            children
+          })
+        }
+      }
+    }
+  }
+
+  return nodes
+}
+
+ipcMain.handle('scan-mods-directory', async (_event, basePath: string) => {
+  try {
+    if (!basePath) {
+      return { success: false, error: '路径为空' }
+    }
+
+    const modsPath = join(basePath, 'Mods')
+
+    // 检查 Mods 文件夹是否存在
+    try {
+      const stats = await fs.stat(modsPath)
+      if (!stats.isDirectory()) {
+        return { success: false, error: 'Mods 不是一个有效的文件夹' }
+      }
+    } catch {
+      return { success: false, error: '未找到 Mods 文件夹' }
+    }
+
+    // 递归扫描目录
+    const tree = await scanModsDirectory(modsPath)
+    return { success: true, tree }
+  } catch (error) {
+    return { success: false, error: '扫描失败: ' + (error as Error).message }
+  }
+})

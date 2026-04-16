@@ -14,6 +14,8 @@ contextBridge.exposeInMainWorld('windowApi', {
   getSettings: () => ipcRenderer.invoke('get-settings'),
   checkModsFolder: (folderPath: string) =>
     ipcRenderer.invoke('check-mods-folder', folderPath),
+  scanModsDirectory: (basePath: string) =>
+    ipcRenderer.invoke('scan-mods-directory', basePath),
 });
 
 contextBridge.exposeInMainWorld('ipcRenderer', {

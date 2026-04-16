@@ -1,3 +1,17 @@
+interface ModTreeNode {
+  title: string;
+  key: string;
+  path: string;
+  isMod: boolean;
+  children?: ModTreeNode[];
+}
+
+interface ScanModsResult {
+  success: boolean;
+  tree?: ModTreeNode[];
+  error?: string;
+}
+
 interface WindowApi {
   minimize: () => void;
   maximize: () => void;
@@ -8,6 +22,7 @@ interface WindowApi {
   saveSettings: (settings: { dcsPath?: string }) => Promise<boolean>;
   getSettings: () => Promise<{ dcsPath: string }>;
   checkModsFolder: (folderPath: string) => Promise<{ valid: boolean; error?: string }>;
+  scanModsDirectory: (basePath: string) => Promise<ScanModsResult>;
 }
 
 interface IpcRenderer {
