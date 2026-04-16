@@ -3,9 +3,9 @@
  */
 {
   "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
-  "appId": "YourAppID",
+  "appId": "DCSModsManager",
   "asar": true,
-  "productName": "YourAppName",
+  "productName": "DCSModsManager",
   "directories": {
     "output": "release/${version}"
   },

@@ -64,6 +64,8 @@ async function createWindow() {
     frame: false, // 隐藏原生标题栏，使用自定义标题栏
     minWidth: 1000,
     minHeight: 700,
+    width: 1200,
+    height: 800,
     webPreferences: {
       preload,
     },
