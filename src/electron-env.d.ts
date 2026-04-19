@@ -29,6 +29,20 @@ interface EnableModResult {
   error?: string;
 }
 
+interface CheckModDeleteResult {
+  success: boolean;
+  hasOtherMods: boolean;
+  otherModCount: number;
+  luaFileCount: number;
+  modName: string;
+  error?: string;
+}
+
+interface DeleteModResult {
+  success: boolean;
+  error?: string;
+}
+
 interface WindowApi {
   minimize: () => void;
   maximize: () => void;
@@ -44,6 +58,9 @@ interface WindowApi {
   enableMod: (disabledModPath: string, originalPath?: string) => Promise<EnableModResult>;
   getDisabledMods: () => Promise<DisabledModInfo[]>;
   scanDisabledModsDirectory: (basePath: string) => Promise<ScanModsResult>;
+  checkModDelete: (modPath: string) => Promise<CheckModDeleteResult>;
+  deleteModFolder: (modPath: string) => Promise<DeleteModResult>;
+  deleteModLua: (modPath: string) => Promise<DeleteModResult>;
 }
 
 interface IpcRenderer {

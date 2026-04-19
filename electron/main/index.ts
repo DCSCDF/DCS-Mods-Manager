@@ -1,7 +1,8 @@
 import { app, BrowserWindow, shell, ipcMain, dialog } from 'electron'
 import { release } from 'node:os'
-import { join, dirname } from 'node:path'
+import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { dirname } from 'node:path'
 import { promises as fs } from 'node:fs'
 import Store from 'electron-store'
 
@@ -37,10 +38,10 @@ globalThis.__dirname = dirname(__filename)
 // ├─┬ dist
 // │ └── index.html    > Electron-Renderer
 //
-process.env.DIST_ELECTRON = join(__dirname, '..')
-process.env.DIST = join(process.env.DIST_ELECTRON, '../dist')
+process.env.DIST_ELECTRON = path.join(__dirname, '..')
+process.env.DIST = path.join(process.env.DIST_ELECTRON, '../dist')
 process.env.VITE_PUBLIC = process.env.VITE_DEV_SERVER_URL
-  ? join(process.env.DIST_ELECTRON, '../public')
+  ? path.join(process.env.DIST_ELECTRON, '../public')
   : process.env.DIST
 
 // Disable GPU Acceleration for Windows 7
@@ -61,14 +62,14 @@ if (!app.requestSingleInstanceLock()) {
 
 let win: BrowserWindow | null = null
 // Here, you can also use other preload
-const preload = join(__dirname, '../preload/index.mjs')
+const preload = path.join(__dirname, '../preload/index.mjs')
 const url = process.env.VITE_DEV_SERVER_URL
-const indexHtml = join(process.env.DIST, 'index.html')
+const indexHtml = path.join(process.env.DIST, 'index.html')
 
 async function createWindow() {
   win = new BrowserWindow({
     title: 'Main window',
-    icon: join(process.env.VITE_PUBLIC, 'favicon.ico'),
+    icon: path.join(process.env.VITE_PUBLIC, 'favicon.ico'),
     autoHideMenuBar: true, // 隐藏菜单栏（工具栏）
     frame: false, // 隐藏原生标题栏，使用自定义标题栏
     minWidth: 1000,
@@ -212,7 +213,7 @@ ipcMain.handle('check-mods-folder', async (_event, folderPath: string) => {
       return { valid: false, error: '路径为空' }
     }
 
-    const modsPath = join(folderPath, 'Mods')
+    const modsPath = path.join(folderPath, 'Mods')
 
     // 检查 Mods 文件夹是否存在
     try {
@@ -254,29 +255,17 @@ function parseEntryLua(content: string): { displayName: string; version: string;
   };
 
   try {
-    // 匹配 displayName = "xxx" 或 displayName = 'xxx'
     const displayNameMatch = content.match(/displayName\s*=\s*["']([^"']+)["']/);
-    if (displayNameMatch) {
-      result.displayName = displayNameMatch[1];
-    }
+    if (displayNameMatch) result.displayName = displayNameMatch[1];
 
-    // 匹配 version = "xxx"
     const versionMatch = content.match(/version\s*=\s*["']([^"']+)["']/);
-    if (versionMatch) {
-      result.version = versionMatch[1];
-    }
+    if (versionMatch) result.version = versionMatch[1];
 
-    // 匹配 developerName = "xxx"
     const developerMatch = content.match(/developerName\s*=\s*["']([^"']+)["']/);
-    if (developerMatch) {
-      result.developerName = developerMatch[1];
-    }
+    if (developerMatch) result.developerName = developerMatch[1];
 
-    // 匹配 info = _("xxx") - DCS 使用 _() 函数包裹字符串
     const infoMatch = content.match(/info\s*=\s*_\(["']([^"']+)["']\)/);
-    if (infoMatch) {
-      result.info = infoMatch[1];
-    }
+    if (infoMatch) result.info = infoMatch[1];
   } catch (error) {
     console.error('解析 Entry.lua 失败:', error);
   }
@@ -284,69 +273,155 @@ function parseEntryLua(content: string): { displayName: string; version: string;
   return result;
 }
 
-async function scanModsDirectory(dirPath: string, parentKey: string = ''): Promise<ModTreeNode[]> {
-  const nodes: ModTreeNode[] = []
-
-  // 获取当前目录名称
-  const dirName = dirPath.split(/[/\\]/).pop() || ''
-
-  // 检查当前目录是否直接包含 Entry.lua 文件（独立 mod）
-  const currentEntryLuaPath = join(dirPath, 'Entry.lua')
-  let currentHasEntryLua = false
-  let currentEntryContent = ''
+// 在目录中搜索 Entry.lua（只搜索直接子目录，不递归）
+async function findEntryLuaInDir(dirPath: string): Promise<string | null> {
   try {
-    const stats = await fs.stat(currentEntryLuaPath)
-    currentHasEntryLua = stats.isFile()
-    if (currentHasEntryLua) {
-      currentEntryContent = await fs.readFile(currentEntryLuaPath, 'utf-8')
-    }
+    const entryPath = path.join(dirPath, 'Entry.lua');
+    await fs.access(entryPath);
+    return entryPath;
   } catch {
-    currentHasEntryLua = false
+    return null;
+  }
+}
+
+// 获取 MOD 的所有子目录（用于嵌套 MOD 的展开）
+async function getAllChildDirectories(dirPath: string, parentKey: string, isModChild: boolean = false): Promise<ModTreeNode[]> {
+  const nodes: ModTreeNode[] = [];
+
+  // 如果是 MOD 的子目录（由父级调用时传入 isModChild=true），先添加主目录节点
+  if (isModChild) {
+    const currentEntryLua = await findEntryLuaInDir(dirPath);
+    if (currentEntryLua) {
+      const dirName = path.basename(dirPath);
+      const content = await fs.readFile(currentEntryLua, 'utf-8');
+      const parsed = parseEntryLua(content);
+
+      nodes.push({
+        title: dirName + ' (主目录)',
+        key: parentKey + '/_main',
+        path: dirPath,
+        isMod: true,
+        entryLuaPath: currentEntryLua,
+        displayName: parsed.displayName || dirName,
+        version: parsed.version || '未知',
+        info: parsed.info || '未知',
+        developerName: parsed.developerName || '未知'
+      });
+    }
   }
 
-  // 扫描当前目录下的所有子文件夹
-  const entries = await fs.readdir(dirPath, { withFileTypes: true })
-  const subDirs = entries.filter(entry => entry.isDirectory())
+  let entries: fs.Dirent[];
+  try {
+    entries = await fs.readdir(dirPath, { withFileTypes: true });
+  } catch {
+    return nodes;
+  }
 
-  // 如果当前目录有 Entry.lua，它本身就是一个 mod
-  // 如果当前目录没有 Entry.lua，它可能是 mod 容器（显示为文件夹）
+  const subDirs = entries.filter(e => e.isDirectory());
+
   for (const entry of subDirs) {
-    const fullPath = join(dirPath, entry.name)
-    const key = parentKey ? `${parentKey}/${entry.name}` : entry.name
+    const childDirPath = path.join(dirPath, entry.name);
+    const childKey = parentKey ? `${parentKey}/${entry.name}` : entry.name;
 
-    // 递归扫描子目录
-    const children = await scanModsDirectory(fullPath, key)
+    // 检查这个子目录是否是 mod
+    const entryLuaPath = await findEntryLuaInDir(childDirPath);
 
-    if (children.length > 0) {
+    if (entryLuaPath) {
+      // 是 mod，递归获取其子目录（传入 true 表示这是 MOD 的子目录）
+      const children = await getAllChildDirectories(childDirPath, childKey, true);
+      const content = await fs.readFile(entryLuaPath, 'utf-8');
+      const parsed = parseEntryLua(content);
+
       nodes.push({
         title: entry.name,
-        key,
-        path: fullPath,
-        isMod: false,
-        children
-      })
+        key: childKey,
+        path: childDirPath,
+        isMod: true,
+        children: children.length > 0 ? children : undefined,
+        entryLuaPath,
+        displayName: parsed.displayName || entry.name,
+        version: parsed.version || '未知',
+        info: parsed.info || '未知',
+        developerName: parsed.developerName || '未知'
+      });
+    } else {
+      // 不是 mod，递归获取其子目录
+      const children = await getAllChildDirectories(childDirPath, childKey, false);
+      if (children.length > 0) {
+        nodes.push({
+          title: entry.name,
+          key: childKey,
+          path: childDirPath,
+          isMod: false,
+          children
+        });
+      }
     }
   }
 
-  // 如果当前目录有 Entry.lua，它本身就是一个 mod，添加到父节点
-  if (currentHasEntryLua) {
-    const parsed = parseEntryLua(currentEntryContent)
+  return nodes;
+}
 
-    nodes.push({
-      title: dirName,
-      key: parentKey || dirName,
-      path: dirPath,
-      isMod: true,
-      children: [],
-      entryLuaPath: currentEntryLuaPath,
-      displayName: parsed.displayName || dirName,
-      version: parsed.version || '未知',
-      info: parsed.info || '未知',
-      developerName: parsed.developerName || '未知'
-    })
+// 递归扫描目录构建树
+async function scanModsDirectory(dirPath: string, parentKey: string = ''): Promise<ModTreeNode[]> {
+  const nodes: ModTreeNode[] = [];
+
+  let entries: fs.Dirent[];
+  try {
+    entries = await fs.readdir(dirPath, { withFileTypes: true });
+  } catch {
+    return nodes;
   }
 
-  return nodes
+  const subDirs = entries.filter(e => e.isDirectory());
+  console.log(`[SCAN] 目录: ${dirPath}, parentKey: "${parentKey}", 子目录: ${subDirs.map(e => e.name).join(', ')}`);
+
+  for (const entry of subDirs) {
+    const childDirPath = path.join(dirPath, entry.name);
+    const childKey = parentKey ? `${parentKey}/${entry.name}` : entry.name;
+
+    // 检查这个子目录本身是否是 mod
+    const entryLuaPath = await findEntryLuaInDir(childDirPath);
+    console.log(`[CHECK] ${entry.name} -> ${entryLuaPath ? '是MOD (Entry.lua: ' + entryLuaPath + ')' : '不是MOD'}`);
+
+    if (entryLuaPath) {
+      // 是 mod，先获取所有子目录作为 children（传入 true 表示这是 MOD 的子目录）
+      const children = await getAllChildDirectories(childDirPath, childKey, true);
+      console.log(`[FOUND] MOD: ${entry.name} (path: ${childDirPath}), 子目录: ${JSON.stringify(children)}`);
+
+      const content = await fs.readFile(entryLuaPath, 'utf-8');
+      const parsed = parseEntryLua(content);
+      console.log(`[PARSED] ${entry.name}: displayName="${parsed.displayName}", version="${parsed.version}"`);
+
+      nodes.push({
+        title: entry.name,
+        key: childKey,
+        path: childDirPath,
+        isMod: true,
+        children: children.length > 0 ? children : undefined,
+        entryLuaPath,
+        displayName: parsed.displayName || entry.name,
+        version: parsed.version || '未知',
+        info: parsed.info || '未知',
+        developerName: parsed.developerName || '未知'
+      });
+      console.log(`[NODE] 创建节点: key="${childKey}", displayName="${parsed.displayName || entry.name}"`);
+    } else {
+      // 不是 mod，检查是否有子 MOD 或子目录
+      const childMods = await scanModsDirectory(childDirPath, childKey);
+      if (childMods.length > 0) {
+        nodes.push({
+          title: entry.name,
+          key: childKey,
+          path: childDirPath,
+          isMod: false,
+          children: childMods
+        });
+      }
+    }
+  }
+
+  return nodes;
 }
 
 // 获取禁用的 mods 列表
@@ -378,7 +453,7 @@ ipcMain.handle('disable-mod', async (_event, modPath: string) => {
     }
 
     // 检查 Entry.lua 是否存在
-    const entryLuaPath = join(modPath, 'Entry.lua')
+    const entryLuaPath = path.join(modPath, 'Entry.lua')
     try {
       await fs.access(entryLuaPath)
     } catch {
@@ -391,7 +466,7 @@ ipcMain.handle('disable-mod', async (_event, modPath: string) => {
     // disable_mods 在 DCS 根目录下
     const disableModsPath = normalizedDcsPath + '/disable_mods'
     // 目标路径（保留相对路径结构）
-    const targetDir = join(disableModsPath, relativePath)
+    const targetDir = path.join(disableModsPath, relativePath)
 
     // 确保目标目录存在
     try {
@@ -401,7 +476,7 @@ ipcMain.handle('disable-mod', async (_event, modPath: string) => {
     }
 
     // 目标 Entry.lua 路径
-    const targetEntryLuaPath = join(targetDir, 'Entry.lua')
+    const targetEntryLuaPath = path.join(targetDir, 'Entry.lua')
 
     // 检查目标 Entry.lua 是否已存在
     try {
@@ -451,8 +526,8 @@ ipcMain.handle('enable-mod', async (_event, disabledModPath: string, originalPat
     const normalizedDisabledModPath = disabledModPath.replace(/\\/g, '/')
 
     // 构建禁用 mod 的完整路径
-    const disabledModDir = join(disableModsPath, normalizedDisabledModPath)
-    const disabledEntryLuaPath = join(disabledModDir, 'Entry.lua')
+    const disabledModDir = path.join(disableModsPath, normalizedDisabledModPath)
+    const disabledEntryLuaPath = path.join(disabledModDir, 'Entry.lua')
 
     // 检查 disable_mods 目录下的 Entry.lua 是否存在
     try {
@@ -479,7 +554,7 @@ ipcMain.handle('enable-mod', async (_event, disabledModPath: string, originalPat
     }
 
     // 目标 Entry.lua 路径
-    const targetEntryLuaPath = join(targetPath, 'Entry.lua')
+    const targetEntryLuaPath = path.join(targetPath, 'Entry.lua')
 
     // 确保目标目录存在
     try {
@@ -533,7 +608,7 @@ ipcMain.handle('scan-disabled-mods-directory', async (_event, basePath: string) 
     }
 
     // disable_mods 在 DCS 根目录下，而不是 Mods 目录下
-    const disableModsPath = join(basePath, 'disable_mods')
+    const disableModsPath = path.join(basePath, 'disable_mods')
 
     // 检查 disable_mods 文件夹是否存在
     try {
@@ -560,7 +635,8 @@ ipcMain.handle('scan-mods-directory', async (_event, basePath: string) => {
       return { success: false, error: '路径为空' }
     }
 
-    const modsPath = join(basePath, 'Mods')
+    const modsPath = path.join(basePath, 'Mods')
+    console.log(`[scan-mods-directory] 开始扫描 Mods 目录: ${modsPath}`)
 
     // 检查 Mods 文件夹是否存在
     try {
@@ -574,8 +650,230 @@ ipcMain.handle('scan-mods-directory', async (_event, basePath: string) => {
 
     // 递归扫描目录
     const tree = await scanModsDirectory(modsPath)
+    console.log(`[scan-mods-directory] 扫描完成，返回 ${tree.length} 个顶层节点`)
+    console.log(`[scan-mods-directory] 树结构:`, JSON.stringify(tree, null, 2))
     return { success: true, tree }
   } catch (error) {
+    console.error('[scan-mods-directory] 扫描失败:', error)
     return { success: false, error: '扫描失败: ' + (error as Error).message }
+  }
+})
+
+// 检查文件夹内是否有其他 mod
+async function checkOtherModsInFolder(folderPath: string): Promise<{ hasOtherMods: boolean; modCount: number }> {
+  try {
+    const entries = await fs.readdir(folderPath, { withFileTypes: true })
+    let modCount = 0
+
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        const subPath = path.join(folderPath, entry.name)
+        const entryLuaPath = path.join(subPath, 'Entry.lua')
+        try {
+          await fs.access(entryLuaPath)
+          modCount++
+        } catch {
+          // 没有 Entry.lua，继续检查子目录
+          const subResult = await checkOtherModsInFolder(subPath)
+          modCount += subResult.modCount
+        }
+      }
+    }
+
+    return { hasOtherMods: modCount > 0, modCount }
+  } catch {
+    return { hasOtherMods: false, modCount: 0 }
+  }
+}
+
+// 获取需要删除的 Entry.lua 文件列表（只删除 Entry.lua）
+async function getEntryLuaFilesToDelete(folderPath: string): Promise<string[]> {
+  const entryLuaFiles: string[] = []
+
+  async function scanForEntryLua(dirPath: string) {
+    const entries = await fs.readdir(dirPath, { withFileTypes: true })
+    for (const entry of entries) {
+      const fullPath = path.join(dirPath, entry.name)
+      if (entry.isDirectory()) {
+        await scanForEntryLua(fullPath)
+      } else if (entry.name === 'Entry.lua') {
+        entryLuaFiles.push(fullPath)
+      }
+    }
+  }
+
+  await scanForEntryLua(folderPath)
+  return entryLuaFiles
+}
+
+// 删除 mod - 检查是否有其他 mod
+ipcMain.handle('check-mod-delete', async (_event, modPath: string) => {
+  try {
+    if (!modPath) {
+      return { success: false, error: 'Mod 路径为空' }
+    }
+
+    // 获取 DCS 路径
+    const dcsPath = (store as any).get('dcsPath', '')
+    if (!dcsPath) {
+      return { success: false, error: '未配置 DCS 路径' }
+    }
+
+    // 统一使用正斜杠
+    const normalizedModPath = modPath.replace(/\\/g, '/')
+    const normalizedDcsPath = dcsPath.replace(/\\/g, '/')
+    const modsPath = normalizedDcsPath + '/Mods'
+
+    // 检查 mod 路径是否在 Mods 目录下
+    if (!normalizedModPath.startsWith(modsPath)) {
+      return { success: false, error: 'Mod 不在 Mods 目录下' }
+    }
+
+    const modName = normalizedModPath.split('/').pop() || ''
+
+    // 直接检查当前 mod 目录下的子文件夹是否有其他 Entry.lua（不包括当前目录自身）
+    const otherModCount = await checkSubFoldersForOtherMods(normalizedModPath)
+
+    return {
+      success: true,
+      hasOtherMods: otherModCount > 0,
+      otherModCount,
+      luaFileCount: 1, // Entry.lua 数量固定为 1
+      modName
+    }
+  } catch (error) {
+    return { success: false, error: '检查失败: ' + (error as Error).message }
+  }
+})
+
+// 检查当前 mod 目录下的子文件夹是否有其他 Entry.lua
+async function checkSubFoldersForOtherMods(folderPath: string): Promise<number> {
+  try {
+    const entries = await fs.readdir(folderPath, { withFileTypes: true })
+    let count = 0
+
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        const subPath = path.join(folderPath, entry.name)
+        const entryLuaPath = path.join(subPath, 'Entry.lua')
+        try {
+          await fs.access(entryLuaPath)
+          count++ // 找到其他 mod
+        } catch {
+          // 没有 Entry.lua，递归检查子文件夹
+          count += await checkSubFoldersForOtherMods(subPath)
+        }
+      }
+    }
+    return count
+  } catch {
+    return 0
+  }
+}
+
+// 删除 mod - 完整删除
+ipcMain.handle('delete-mod-folder', async (_event, modPath: string) => {
+  try {
+    if (!modPath) {
+      return { success: false, error: 'Mod 路径为空' }
+    }
+
+    // 获取 DCS 路径
+    const dcsPath = (store as any).get('dcsPath', '')
+    if (!dcsPath) {
+      return { success: false, error: '未配置 DCS 路径' }
+    }
+
+    // 统一使用正斜杠
+    const normalizedModPath = modPath.replace(/\\/g, '/')
+    const normalizedDcsPath = dcsPath.replace(/\\/g, '/')
+    const modsPath = normalizedDcsPath + '/Mods'
+
+    // 检查 mod 路径是否在 Mods 目录下
+    if (!normalizedModPath.startsWith(modsPath)) {
+      return { success: false, error: 'Mod 不在 Mods 目录下' }
+    }
+
+    // 删除整个文件夹
+    await fs.rm(normalizedModPath, { recursive: true, force: true })
+
+    // 尝试清理空父目录
+    const parentPath = normalizedModPath.substring(0, normalizedModPath.lastIndexOf('/'))
+    try {
+      const entries = await fs.readdir(parentPath)
+      if (entries.length === 0) {
+        await fs.rmdir(parentPath)
+      }
+    } catch {
+      // 忽略
+    }
+
+    return { success: true }
+  } catch (error) {
+    return { success: false, error: '删除失败: ' + (error as Error).message }
+  }
+})
+
+// 删除 mod - 只删除 lua 文件
+ipcMain.handle('delete-mod-lua', async (_event, modPath: string) => {
+  try {
+    if (!modPath) {
+      return { success: false, error: 'Mod 路径为空' }
+    }
+
+    // 获取 DCS 路径
+    const dcsPath = (store as any).get('dcsPath', '')
+    if (!dcsPath) {
+      return { success: false, error: '未配置 DCS 路径' }
+    }
+
+    // 统一使用正斜杠
+    const normalizedModPath = modPath.replace(/\\/g, '/')
+    const normalizedDcsPath = dcsPath.replace(/\\/g, '/')
+    const modsPath = normalizedDcsPath + '/Mods'
+
+    // 检查 mod 路径是否在 Mods 目录下
+    if (!normalizedModPath.startsWith(modsPath)) {
+      return { success: false, error: 'Mod 不在 Mods 目录下' }
+    }
+
+    // 获取所有 Entry.lua 文件
+    const entryLuaFiles = await getEntryLuaFilesToDelete(normalizedModPath)
+
+    // 删除所有 Entry.lua 文件
+    for (const luaFile of entryLuaFiles) {
+      await fs.unlink(luaFile)
+    }
+
+    // 清理空目录
+    async function cleanEmptyDirs(dirPath: string) {
+      const entries = await fs.readdir(dirPath, { withFileTypes: true })
+      for (const entry of entries) {
+        if (entry.isDirectory()) {
+          const subPath = path.join(dirPath, entry.name)
+          await cleanEmptyDirs(subPath)
+          // 检查是否为空
+          const subEntries = await fs.readdir(subPath)
+          if (subEntries.length === 0) {
+            await fs.rmdir(subPath)
+          }
+        }
+      }
+    }
+    await cleanEmptyDirs(normalizedModPath)
+
+    // 最后检查 mod 目录是否为空
+    try {
+      const finalEntries = await fs.readdir(normalizedModPath)
+      if (finalEntries.length === 0) {
+        await fs.rmdir(normalizedModPath)
+      }
+    } catch {
+      // 忽略
+    }
+
+    return { success: true, deletedCount: entryLuaFiles.length }
+  } catch (error) {
+    return { success: false, error: '删除失败: ' + (error as Error).message }
   }
 })

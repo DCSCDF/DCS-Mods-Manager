@@ -10,6 +10,25 @@
                         </p>
                 </div>
 
+                <!-- 删除确认对话框 -->
+                <a-modal
+                        v-model:open="deleteModalVisible"
+                        :title="'确认删除 - ' + (deleteModalInfo?.mod?.displayName || '')"
+                        :okText="deleteMode === 'folder' ? '删除整个文件夹' : '只删除 Lua 文件'"
+                        :cancelText="'取消'"
+                        :confirmLoading="deleting"
+                        @ok="handleDeleteConfirm"
+                        @cancel="deleteModalVisible = false"
+                >
+                        <div v-if="deleteModalInfo">
+                                <p style="margin-bottom: 12px">该文件夹下还有 {{ deleteModalInfo.otherModCount }} 个其他模组。请选择删除方式：</p>
+                                <a-radio-group v-model:value="deleteMode">
+                                        <a-radio  value="lua">只删除 Lua 文件</a-radio>
+                                        <a-radio value="folder" style="margin-bottom: 8px">删除整个文件夹</a-radio>
+                                </a-radio-group>
+                        </div>
+                </a-modal>
+
 
                         <div class="flex items-center justify-between mb-3">
                                 <div class="flex gap-4">
@@ -33,10 +52,7 @@
                                         <a-radio-group>
                                                 <a-radio-button value="large" @click="handleDisableMods" :disabled="selectedMods.length === 0" :loading="disabling">禁用</a-radio-button>
                                                 <a-radio-button value="default" @click="handleEnableMods" :disabled="selectedDisabledMods.length === 0" :loading="enabling">启用</a-radio-button>
-                                                <a-radio-button value="default" :disabled="true">删除</a-radio-button>
-<!--                                                <a-radio-button value="small">-->
-<!--                                                        <CloseOutlined />-->
-<!--                                                </a-radio-button>-->
+                                                <a-radio-button value="default" @click="handleDeleteMods" :disabled="selectedMods.length === 0" :loading="deleting">删除</a-radio-button>
                                         </a-radio-group>
 
 
@@ -117,10 +133,11 @@
 </template>
 
 <script setup lang="ts">
-import {ExportOutlined, UploadOutlined,  ReloadOutlined} from '@ant-design/icons-vue';
+import { ReloadOutlined} from '@ant-design/icons-vue';
 
-import { ref, onMounted, computed} from 'vue';
-import { Modal, message } from 'ant-design-vue';
+import { ref, onMounted, computed, h } from 'vue';
+import { Modal, message,  } from 'ant-design-vue';
+
 
 // 跨平台路径拼接
 // 从 disable_mods 路径转换为原始 Mods 路径
@@ -142,11 +159,17 @@ const isValidPath = ref(true);
 const loading = ref(false);
 const disabling = ref(false);
 const enabling = ref(false);
+const deleting = ref(false);
 const searchText = ref('');
 const searchMode = ref(false);
 const statusFilter = ref('all');  // 状态筛选: all | enabled | disabled
 const selectedMods = ref<DataItem[]>([]);
 const selectedDisabledMods = ref<DataItem[]>([]);  // 选中的已禁用 mods
+
+// 删除模态框相关
+const deleteModalVisible = ref(false);
+const deleteModalInfo = ref<{ mod: DataItem; otherModCount: number; luaFileCount: number } | null>(null);
+const deleteMode = ref<'folder' | 'lua'>('folder');
 
 // 模组目录树数据
 interface ModTreeNode {
@@ -452,6 +475,23 @@ const scanModsDirectory = async () => {
       if (expandedKeys.value.length === 0) {
         expandedKeys.value = ['all'];
       }
+
+      // 自动展开包含子 mod 的容器节点
+      const autoExpandContainerKeys = (nodes: any[], parentKeys: string[] = []) => {
+        for (const node of nodes) {
+          if (!node.isMod && node.children && node.children.length > 0) {
+            // 检查是否包含 isMod 为 true 的子节点
+            const hasModChild = (children: any[]): boolean => {
+              return children.some(child => child.isMod || (child.children && hasModChild(child.children)));
+            };
+            if (hasModChild(node.children)) {
+              expandedKeys.value.push(node.key);
+            }
+            autoExpandContainerKeys(node.children, [...parentKeys, node.key]);
+          }
+        }
+      };
+      autoExpandContainerKeys(allChildren);
       selectedKeys.value = ['all'];
 
       // 构建启用 mods 列表
@@ -474,10 +514,26 @@ const scanModsDirectory = async () => {
 // 扁平化获取所有 mod
 const flattenMods = (node: ModTreeNode, isDisabled: boolean = false): DataItem[] => {
   let result: DataItem[] = [];
+  
+  // 跳过 "_main" 节点（主目录），避免重复
+  if (node.title && node.title.includes('(主目录)')) {
+    // 但如果这个节点是顶级 MOD（即它是 rawTreeData 的直接子节点），仍然需要添加
+    // 检查方式：如果父节点 key 不包含当前节点名，则它是顶级
+    if (!node.key.includes('/')) {
+      // 顶级 MOD，继续处理
+    } else {
+      console.log('[flattenMods] 跳过 (主目录) 节点:', node.key);
+      return result;
+    }
+  }
+  
   if (node.isMod) {
+    // 优先使用 displayName，其次使用 title
+    const modName = node.displayName || node.title || node.originTitle || '未知';
+    console.log('[flattenMods] 处理 MOD:', node.key, 'displayName:', JSON.stringify(node.displayName), 'title:', node.title, '最终名称:', modName);
     result.push({
       key: node.key,
-      displayName: node.displayName || node.originTitle || node.title,
+      displayName: modName,
       version: node.version || '未知',
       developerName: node.developerName || '未知',
       info: node.info || '未知',
@@ -496,6 +552,7 @@ const flattenMods = (node: ModTreeNode, isDisabled: boolean = false): DataItem[]
 
 // 处理树节点选择
 const handleTreeSelect = (keys: string[]) => {
+  console.log('[handleTreeSelect] keys:', keys);
   selectedKeys.value = keys;
 
   // 如果之前是搜索模式，清除搜索
@@ -541,13 +598,24 @@ const handleTreeSelect = (keys: string[]) => {
       }
     }
   } else {
-    // 启用区域的节点
-    const node = findNodeByKey(rawTreeData.value, selectedKey);
-    if (node) {
-      if (node.isMod) {
+    // 启用区域的节点 - 去掉 "all/" 前缀
+    let searchKey = selectedKey.startsWith('all/') ? selectedKey.substring(4) : selectedKey;
+    
+    // 检查是否是 MOD 节点的 "(主目录)" 选择
+    // 格式: aircraft/aircraft (主目录) 或 aircraft/Su-35_EFM_V2.0.28b/Su-35_EFM_V2.0.28b (主目录)
+    // 正则: 捕获 (父路径) + (MOD名) + "/" + (重复的MOD名) + " (主目录)"
+    const mainDirMatch = searchKey.match(/^(.+)\/([^/]+)\/\2 \(主目录\)$/);
+    if (mainDirMatch) {
+      // mainDirMatch[1] 是父路径（如 "aircraft"），mainDirMatch[2] 是 MOD 名
+      const parentPath = mainDirMatch[1];
+      const modName = mainDirMatch[2];
+      const modKey = parentPath + '/' + modName;
+      console.log('[handleTreeSelect] 检测到 (主目录) 选择, parentPath:', parentPath, 'modName:', modName, 'modKey:', modKey);
+      const node = findNodeByKey(rawTreeData.value, modKey);
+      if (node && node.isMod) {
         result = [{
           key: node.key,
-          displayName: node.displayName || node.originTitle || node.title,
+          displayName: node.displayName || node.title,
           version: node.version || '未知',
           developerName: node.developerName || '未知',
           info: node.info || '未知',
@@ -555,11 +623,30 @@ const handleTreeSelect = (keys: string[]) => {
           disabled: false,
           path: node.path
         }];
-      } else {
-        result = (node.children || []).flatMap(child => flattenMods(child, false));
+      }
+    } else {
+      // 普通节点选择
+      const node = findNodeByKey(rawTreeData.value, searchKey);
+      if (node) {
+        if (node.isMod) {
+          result = [{
+            key: node.key,
+            displayName: node.displayName || node.originTitle || node.title,
+            version: node.version || '未知',
+            developerName: node.developerName || '未知',
+            info: node.info || '未知',
+            isUse: true,
+            disabled: false,
+            path: node.path
+          }];
+        } else {
+          result = (node.children || []).flatMap(child => flattenMods(child, false));
+        }
       }
     }
   }
+
+  console.log('[handleTreeSelect] result:', result);
 
   // 应用状态筛选
   if (statusFilter.value !== 'all') {
@@ -570,6 +657,7 @@ const handleTreeSelect = (keys: string[]) => {
     }
   }
 
+  console.log('[handleTreeSelect] 最终 result:', result);
   data.value = result;
 };
 
@@ -589,12 +677,16 @@ const findNodeByKey = (nodes: ModTreeNode[], key: string): ModTreeNode | null =>
   let currentNodes = nodes;
   for (let i = 0; i < parts.length; i++) {
     const part = parts[i];
+    const isLastPart = (i === parts.length - 1);
+    
+    // 拼接当前层级的完整 key
+    const currentKey = parts.slice(0, i + 1).join('/');
 
     let found: ModTreeNode | null = null;
 
+    // 精确匹配当前层级的完整 key
     for (const node of currentNodes) {
-      // 匹配策略：精确匹配 key，或 key 以 part 结尾（兼容存储的完整路径）
-      if (node.key === part || node.key.endsWith('/' + part)) {
+      if (node.key === currentKey) {
         found = node;
         break;
       }
@@ -604,8 +696,10 @@ const findNodeByKey = (nodes: ModTreeNode[], key: string): ModTreeNode | null =>
       return null;
     }
 
+    console.log('[findNodeByKey] 找到节点:', found.key, 'isMod:', found.isMod, 'children:', found.children?.map(c => c.key));
+
     // 如果是最后一部分，返回找到的节点
-    if (i === parts.length - 1) {
+    if (isLastPart) {
       return found;
     }
 
@@ -774,6 +868,112 @@ const handleEnableMods = () => {
       }
     }
   });
+};
+
+// 删除 mod
+const handleDeleteMods = () => {
+  if (selectedMods.value.length === 0) {
+    message.warning('请先选择要删除的模组');
+    return;
+  }
+
+  const mod = selectedMods.value[0]; // 一次只删除一个
+  const modName = mod.displayName;
+
+  deleting.value = true;
+  deleteMode.value = 'lua'; // 重置为默认
+
+  // 先检查是否有其他 mod
+  window.windowApi?.checkModDelete(mod.path).then(async (checkResult: any) => {
+    if (!checkResult?.success) {
+      message.error(checkResult?.error || '检查失败');
+      deleting.value = false;
+      return;
+    }
+
+    if (checkResult.hasOtherMods) {
+      // 有其他 mod，使用 a-modal 显示对话框
+      deleteModalInfo.value = {
+        mod: mod,
+        otherModCount: checkResult.otherModCount,
+        luaFileCount: checkResult.luaFileCount
+      };
+      deleteModalVisible.value = true;
+    } else {
+      // 没有其他 mod，直接确认删除文件夹
+      Modal.confirm({
+        title: '确认删除',
+        content: `确定要删除 "${modName}" 吗？此操作不可恢复。`,
+        okText: '删除',
+        cancelText: '取消',
+        onOk: async () => {
+          await confirmDeleteFolder(mod.path, modName);
+        }
+      });
+    }
+    deleting.value = false;
+  }).catch((error: any) => {
+    message.error('检查失败: ' + error.message);
+    deleting.value = false;
+  });
+};
+
+// 处理删除确认
+const handleDeleteConfirm = async () => {
+  if (!deleteModalInfo.value) return;
+
+  const mod = deleteModalInfo.value.mod;
+  const modName = mod.displayName;
+
+  deleteModalVisible.value = false;
+
+  if (deleteMode.value === 'folder') {
+    await confirmDeleteFolder(mod.path, modName);
+  } else {
+    await confirmDeleteLua(mod.path, modName);
+  }
+};
+
+// 确认删除整个文件夹
+const confirmDeleteFolder = async (modPath: string, modName: string) => {
+  deleting.value = true;
+  try {
+    const result: any = await window.windowApi?.deleteModFolder(modPath);
+    if (result?.success) {
+      message.success(`"${modName}" 已删除`);
+      // 清理选中状态
+      selectedMods.value = [];
+      // 刷新列表
+      await scanModsDirectory();
+    } else {
+      message.error(result?.error || '删除失败');
+    }
+  } catch (error) {
+    message.error('删除失败: ' + (error as Error).message);
+  } finally {
+    deleting.value = false;
+  }
+};
+
+// 确认只删除 Lua 文件
+const confirmDeleteLua = async (modPath: string, modName: string) => {
+  deleting.value = true;
+  try {
+    const result: any = await window.windowApi?.deleteModLua(modPath);
+    if (result?.success) {
+      message.success(`"${modName}" 的 Lua 文件已删除 (${result.deletedCount} 个文件)`);
+      // 清理选中状态
+      selectedMods.value = [];
+      // 刷新列表
+      await scanModsDirectory();
+    } else {
+      message.error(result?.error || '删除失败');
+    }
+  } catch (error) {
+    message.error('删除失败: ' + (error as Error).message);
+  } finally {
+    deleting.value = false;
+  }
 };
 
 // 检查路径是否有效（确保只检查一次）

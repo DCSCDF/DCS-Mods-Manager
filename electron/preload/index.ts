@@ -25,6 +25,13 @@ contextBridge.exposeInMainWorld('windowApi', {
     ipcRenderer.invoke('get-disabled-mods'),
   scanDisabledModsDirectory: (basePath: string) =>
     ipcRenderer.invoke('scan-disabled-mods-directory', basePath),
+  // 删除 mod 相关 API
+  checkModDelete: (modPath: string) =>
+    ipcRenderer.invoke('check-mod-delete', modPath),
+  deleteModFolder: (modPath: string) =>
+    ipcRenderer.invoke('delete-mod-folder', modPath),
+  deleteModLua: (modPath: string) =>
+    ipcRenderer.invoke('delete-mod-lua', modPath),
 });
 
 contextBridge.exposeInMainWorld('ipcRenderer', {
