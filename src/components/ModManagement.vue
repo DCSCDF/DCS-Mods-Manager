@@ -3,10 +3,10 @@
 
                 <div class="mb-6">
                         <h1 class="text-2xl text-gray-800 mb-2! font-medium">
-                                Mod 管理
+                                玩家Mod 管理
                         </h1>
                         <p  class="text-gray-500 mb-6">
-                                这里是 DCSMod 管理的内容区域
+                                这里是 DCS 的保存的游戏中的mod管理内容区域
                         </p>
                 </div>
 
@@ -42,17 +42,17 @@
 
                                 </div>
                                 <div class="flex gap-4">
-                                        <a-radio-group>
-                                                <a-radio-button :disabled="true" value="large">
-                                                        <ExportOutlined />
-                                                </a-radio-button>
-                                                <a-radio-button :disabled="true" value="default">
-                                                        <UploadOutlined />
-                                                </a-radio-button>
-<!--                                                <a-radio-button value="small">-->
-<!--                                                        <DeleteOutlined />-->
+<!--                                        <a-radio-group>-->
+<!--                                                <a-radio-button :disabled="true" value="large">-->
+<!--                                                        <ExportOutlined />-->
 <!--                                                </a-radio-button>-->
-                                        </a-radio-group>
+<!--                                                <a-radio-button :disabled="true" value="default">-->
+<!--                                                        <UploadOutlined />-->
+<!--                                                </a-radio-button>-->
+<!--&lt;!&ndash;                                                <a-radio-button value="small">&ndash;&gt;-->
+<!--&lt;!&ndash;                                                        <DeleteOutlined />&ndash;&gt;-->
+<!--&lt;!&ndash;                                                </a-radio-button>&ndash;&gt;-->
+<!--                                        </a-radio-group>-->
                                         <a-button type="primary" @click="refreshMods" :loading="loading">
                                                 <template #icon>
                                                         <ReloadOutlined />

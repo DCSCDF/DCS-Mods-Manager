@@ -12,7 +12,7 @@
 
                 <a-card >
                   <a-form layout="vertical">
-                    <a-form-item label="DCS 游戏存档/mod根目录" extra="请选择保存的游戏文件夹中的DCS，请勿选择游戏安装的目录。">
+                    <a-form-item label="DCS玩家文件" extra="请选择保存的游戏文件夹中的DCS文件夹，请勿选择游戏安装的目录。">
                       <div class="flex items-center gap-3">
                         <a-input
                           v-model:value="dcsPath"

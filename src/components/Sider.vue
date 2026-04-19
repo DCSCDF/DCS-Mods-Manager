@@ -61,7 +61,7 @@ const collapsed = ref(true);
 const openKeys = ref<string[]>([]);
 
 const items: ItemType[] = reactive([
-        getItem('Mod管理', 'sub1', () => h(AppstoreOutlined)),
+        getItem('玩家Mod管理', 'sub1', () => h(AppstoreOutlined)),
         getItem('设置', 'sub2', () => h(SettingOutlined)),
 ]);
 
