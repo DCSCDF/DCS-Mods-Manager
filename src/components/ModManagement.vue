@@ -319,7 +319,11 @@ const transformToAntTree = (nodes: ModTreeNode[], parentPath: string = '', isDis
       path: node.path,
       isMod: node.isMod,
       originTitle: node.title,
-      isDisabled: isDisabled,  // 使用 isDisabled 避免与 Ant Tree 的 disabled 冲突
+      isDisabled: isDisabled,
+      displayName: node.displayName,
+      version: node.version,
+      developerName: node.developerName,
+      info: node.info,
       scopedSlots: {
         icon: node.isMod ? 'FileTextOutlined' : 'FolderOutlined'
       }
@@ -566,30 +570,44 @@ const handleTreeSelect = (keys: string[]) => {
 
 // 根据 key 查找节点（支持带前缀的 key）
 const findNodeByKey = (nodes: ModTreeNode[], key: string): ModTreeNode | null => {
-  // 去掉可能的 "all/" 或 "disabled/" 前缀来匹配原始 key
+  // 去掉 "all/" 或 "disabled/" 前缀
   let searchKey = key;
   if (key.startsWith('all/')) {
     searchKey = key.substring(4);
   } else if (key.startsWith('disabled/')) {
     searchKey = key.substring(9);
   }
-  
-  for (const node of nodes) {
-    // 匹配原始 key（不带前缀）
-    if (node.key === searchKey) {
-      return node;
-    }
-    // 匹配带 disabled/ 前缀的 key（用于已转换的树）
-    if (node.key === key || node.key === 'disabled/' + searchKey) {
-      return node;
-    }
-    if (node.children && node.children.length > 0) {
-      const found = findNodeByKey(node.children, key);
-      if (found) {
-        return found;
+
+  // 分割路径，逐层查找
+  const parts = searchKey.split('/');
+
+  let currentNodes = nodes;
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+
+    let found: ModTreeNode | null = null;
+
+    for (const node of currentNodes) {
+      // 匹配策略：精确匹配 key，或 key 以 part 结尾（兼容存储的完整路径）
+      if (node.key === part || node.key.endsWith('/' + part)) {
+        found = node;
+        break;
       }
     }
+
+    if (!found) {
+      return null;
+    }
+
+    // 如果是最后一部分，返回找到的节点
+    if (i === parts.length - 1) {
+      return found;
+    }
+
+    // 否则继续在子节点中查找
+    currentNodes = found.children || [];
   }
+
   return null;
 };
 

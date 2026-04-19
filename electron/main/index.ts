@@ -309,6 +309,26 @@ async function scanModsDirectory(dirPath: string, parentKey: string = ''): Promi
   const subDirs = entries.filter(entry => entry.isDirectory())
 
   // 如果当前目录有 Entry.lua，它本身就是一个 mod
+  // 如果当前目录没有 Entry.lua，它可能是 mod 容器（显示为文件夹）
+  for (const entry of subDirs) {
+    const fullPath = join(dirPath, entry.name)
+    const key = parentKey ? `${parentKey}/${entry.name}` : entry.name
+
+    // 递归扫描子目录
+    const children = await scanModsDirectory(fullPath, key)
+
+    if (children.length > 0) {
+      nodes.push({
+        title: entry.name,
+        key,
+        path: fullPath,
+        isMod: false,
+        children
+      })
+    }
+  }
+
+  // 如果当前目录有 Entry.lua，它本身就是一个 mod，添加到父节点
   if (currentHasEntryLua) {
     const parsed = parseEntryLua(currentEntryContent)
 
@@ -324,33 +344,6 @@ async function scanModsDirectory(dirPath: string, parentKey: string = ''): Promi
       info: parsed.info || '未知',
       developerName: parsed.developerName || '未知'
     })
-  }
-
-  // 递归处理所有子文件夹
-  for (const entry of subDirs) {
-    const fullPath = join(dirPath, entry.name)
-    const key = parentKey ? `${parentKey}/${entry.name}` : entry.name
-
-    const children = await scanModsDirectory(fullPath, key)
-
-    if (children.length > 0) {
-      nodes.push({
-        title: entry.name,
-        key,
-        path: fullPath,
-        isMod: false,
-        children
-      })
-    } else {
-      // 即使子文件夹没有任何 mod，也显示它作为空容器
-      nodes.push({
-        title: entry.name,
-        key,
-        path: fullPath,
-        isMod: false,
-        children: []
-      })
-    }
   }
 
   return nodes
