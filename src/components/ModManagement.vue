@@ -80,7 +80,7 @@
                         </div>
                 <div class="flex flex-row ">
                         <div>
-                                <a-card size="small" class="mr-3!" title="模组目录" style="width: 280px">
+                                <a-card size="small" class="mr-3!" title="模组目录" style="width:280px">
                                         <a-spin v-if="loading" />
                                         <a-directory-tree
                                             v-else
@@ -349,9 +349,14 @@ const truncateText = (text: string, maxLength: number = 15): string => {
 // 转换数据为 Ant Design Tree 格式（不截断）
 const transformToAntTree = (nodes: ModTreeNode[], parentPath: string = '', isDisabled: boolean = false): ModTreeNode[] => {
   return nodes.map((node) => {
+    // 显示标题时去掉 "(主目录)" 后缀
+    let displayTitle = node.title;
+    if (displayTitle && displayTitle.endsWith('(主目录)')) {
+      displayTitle = displayTitle.slice(0, -6); // 去掉 "(主目录)" (5个字符 + 1个空格)
+    }
     const key = parentPath ? `${parentPath}/${node.title}` : node.title;
     const newNode: any = {
-      title: truncateText(node.title),
+      title: truncateText(displayTitle),
       key: key,
       path: node.path,
       isMod: node.isMod,

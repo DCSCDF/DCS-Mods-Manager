@@ -34,7 +34,7 @@ const contentStyle: CSSProperties = {
 
 const footerStyle: CSSProperties = {
         color: '#fff',
-        backgroundColor: '#4998cc',
+        backgroundColor: '#3372f6',
         padding: '4px 20px',
 };
 
