@@ -439,9 +439,14 @@ const scanModsDirectory = async () => {
       
       treeData.value = newTreeData;
       
-      // 过滤 expandedKeys，只保留存在于新树中的 key
+      // 过滤 expandedKeys，只保留存在于新树中的 key（兼容有无 "all/" 前缀的 key）
       const validKeys = getAllTreeKeys(newTreeData);
-      expandedKeys.value = expandedKeys.value.filter(key => validKeys.has(key));
+      expandedKeys.value = expandedKeys.value.filter(key => {
+        // 直接匹配，或去掉前缀后匹配，或加上前缀后匹配
+        const withoutAll = key.startsWith('all/') ? key.substring(4) : key;
+        const withAll = 'all/' + key;
+        return validKeys.has(key) || validKeys.has(withoutAll) || validKeys.has(withAll);
+      });
       
       // 如果没有展开任何节点，展开 "全部"
       if (expandedKeys.value.length === 0) {
