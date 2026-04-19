@@ -3,6 +3,7 @@ interface ModTreeNode {
   key: string;
   path: string;
   isMod: boolean;
+  isCategory?: boolean;
   children?: ModTreeNode[];
 }
 

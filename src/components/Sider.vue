@@ -16,7 +16,12 @@
         </a-layout-sider>
 </template>
 <script setup lang="ts">
-import type {CSSProperties, VueElement} from 'vue';
+import { reactive, ref, h } from 'vue';
+import { SettingOutlined, AppstoreOutlined } from '@ant-design/icons-vue';
+import type { CSSProperties, VueElement } from 'vue';
+import type { ItemType } from 'ant-design-vue';
+import type { VNodeChild } from 'vue';
+
 const siderStyle: CSSProperties = {
         textAlign: 'center',
         color: '#3e3e3e',
@@ -26,11 +31,6 @@ const siderStyle: CSSProperties = {
         position: 'sticky',
         top: 0,
 };
-
-import { reactive, ref, h } from 'vue';
-import { SettingOutlined, AppstoreOutlined } from '@ant-design/icons-vue';
-import type { ItemType } from 'ant-design-vue';
-import type { VNodeChild } from 'vue';
 
 defineProps<{
         modelValue: string;

@@ -177,6 +177,7 @@ interface ModTreeNode {
   key: string
   path: string
   isMod: boolean
+  isCategory?: boolean
   children?: ModTreeNode[]
   scopedSlots?: { icon: string }
   originTitle?: string  // 保存原始名称用于表格显示
@@ -341,6 +342,7 @@ const transformToAntTree = (nodes: ModTreeNode[], parentPath: string = '', isDis
       key: key,
       path: node.path,
       isMod: node.isMod,
+      isCategory: node.isCategory,
       originTitle: node.title,
       isDisabled: isDisabled,
       displayName: node.displayName,
@@ -515,16 +517,17 @@ const scanModsDirectory = async () => {
 const flattenMods = (node: ModTreeNode, isDisabled: boolean = false): DataItem[] => {
   let result: DataItem[] = [];
   
-  // 跳过 "_main" 节点（主目录），避免重复
-  if (node.title && node.title.includes('(主目录)')) {
-    // 但如果这个节点是顶级 MOD（即它是 rawTreeData 的直接子节点），仍然需要添加
-    // 检查方式：如果父节点 key 不包含当前节点名，则它是顶级
-    if (!node.key.includes('/')) {
-      // 顶级 MOD，继续处理
-    } else {
-      console.log('[flattenMods] 跳过 (主目录) 节点:', node.key);
-      return result;
+  // 跳过 "_main" 文件夹（主目录），避免重复显示
+  // _main 是 DCS 内部结构，实际内容在其子目录中
+  if (node.isMod && node.title && node.title.endsWith('(主目录)')) {
+    // _main 文件夹会被跳过，但它的子目录（如 MOD 文件夹）会被正常处理
+    console.log('[flattenMods] 跳过 _main (主目录) 文件夹:', node.key);
+    if (node.children) {
+      for (const child of node.children) {
+        result = result.concat(flattenMods(child, isDisabled));
+      }
     }
+    return result;
   }
   
   if (node.isMod) {
@@ -582,7 +585,7 @@ const handleTreeSelect = (keys: string[]) => {
     const searchKey = selectedKey.substring(9); // 去掉 "disabled/" 前缀
     const node = findNodeByKey(rawDisabledTreeData.value, 'disabled/' + searchKey);
     if (node) {
-      if (node.isMod) {
+      if (node.isMod && !node.isCategory) {
         result = [{
           key: selectedKey,
           displayName: node.displayName || node.originTitle || node.title,
@@ -602,36 +605,73 @@ const handleTreeSelect = (keys: string[]) => {
     let searchKey = selectedKey.startsWith('all/') ? selectedKey.substring(4) : selectedKey;
     
     // 检查是否是 MOD 节点的 "(主目录)" 选择
-    // 格式: aircraft/aircraft (主目录) 或 aircraft/Su-35_EFM_V2.0.28b/Su-35_EFM_V2.0.28b (主目录)
-    // 正则: 捕获 (父路径) + (MOD名) + "/" + (重复的MOD名) + " (主目录)"
+    // 格式1: aircraft/IRIAF_-_Asia_Minor/IRIAF_-_Asia_Minor (主目录)
+    //        正则: 捕获 (父路径) + (MOD名) + "/" + (重复的MOD名) + " (主目录)"
+    // 格式2: aircraft/aircraft (主目录) - 分类节点的 (主目录)
+    //        正则: 捕获 (父路径) + "/" + (MOD名) + " (主目录)"
     const mainDirMatch = searchKey.match(/^(.+)\/([^/]+)\/\2 \(主目录\)$/);
-    if (mainDirMatch) {
-      // mainDirMatch[1] 是父路径（如 "aircraft"），mainDirMatch[2] 是 MOD 名
-      const parentPath = mainDirMatch[1];
-      const modName = mainDirMatch[2];
-      const modKey = parentPath + '/' + modName;
-      console.log('[handleTreeSelect] 检测到 (主目录) 选择, parentPath:', parentPath, 'modName:', modName, 'modKey:', modKey);
-      const node = findNodeByKey(rawTreeData.value, modKey);
-      if (node && node.isMod) {
-        result = [{
-          key: node.key,
-          displayName: node.displayName || node.title,
-          version: node.version || '未知',
-          developerName: node.developerName || '未知',
-          info: node.info || '未知',
-          isUse: true,
-          disabled: false,
-          path: node.path
-        }];
+    const categoryMainDirMatch = !mainDirMatch ? searchKey.match(/^(.+)\/([^/]+) \(主目录\)$/) : null;
+    console.log('[handleTreeSelect] searchKey:', searchKey, 'mainDirMatch:', mainDirMatch, 'categoryMainDirMatch:', categoryMainDirMatch);
+    if (mainDirMatch || categoryMainDirMatch) {
+      const match = mainDirMatch || categoryMainDirMatch!;
+      const parentPath = match[1];
+      const modName = match[2];
+      console.log('[handleTreeSelect] 检测到 (主目录) 选择, parentPath:', parentPath, 'modName:', modName);
+
+      // 检查是否是 _main 节点（用于查看 MOD 分类目录下的所有子 MOD）
+      // _main 节点的 key 格式是: modKey/_main
+      // 例如: aircraft/_main, aircraft/IRIAF_-_Asia_Minor/_main
+      let searchNodeKey = parentPath + '/' + modName;
+
+      // 如果 parentPath === modName（如 aircraft/aircraft），实际 key 就是 parentPath
+      if (parentPath === modName) {
+        searchNodeKey = parentPath;
+      }
+
+      if (searchNodeKey.endsWith('/_main')) {
+        // 这是 _main 节点，实际对应父 MOD 节点
+        const parentKey = parentPath; // aircraft/_main -> aircraft
+        console.log('[handleTreeSelect] _main 节点，实际查找父节点:', parentKey);
+        const parentNode = findNodeByKey(rawTreeData.value, parentKey);
+        if (parentNode) {
+          console.log('[handleTreeSelect] 找到父节点:', parentNode.key, 'isMod:', parentNode.isMod, 'isCategory:', parentNode.isCategory, 'children count:', parentNode.children?.length);
+          // 显示父节点下的所有子 MOD
+          result = parentNode.children.flatMap(child => flattenMods(child, false));
+        }
+      } else {
+        // 点击 (主目录) 应该显示当前 MOD 自身
+        console.log('[handleTreeSelect] 查找节点 key:', searchNodeKey);
+        const node = findNodeByKey(rawTreeData.value, searchNodeKey);
+        if (node) {
+          console.log('[handleTreeSelect] 找到节点:', node.key, 'isMod:', node.isMod, 'isCategory:', node.isCategory, 'children count:', node.children?.length);
+          // 无论是否是 category，只要节点有 _main 子节点，就显示 MOD 自身
+          if (node.isMod) {
+            result = [{
+              key: node.key,
+              displayName: node.displayName || node.title,
+              version: node.version || '未知',
+              developerName: node.developerName || '未知',
+              info: node.info || '未知',
+              isUse: true,
+              disabled: false,
+              path: node.path
+            }];
+          } else if (node.children) {
+            result = node.children.flatMap(child => flattenMods(child, false));
+          }
+        }
       }
     } else {
       // 普通节点选择
+      console.log('[handleTreeSelect] 普通节点选择, searchKey:', searchKey);
       const node = findNodeByKey(rawTreeData.value, searchKey);
       if (node) {
+        console.log('[handleTreeSelect] 找到节点:', node.key, 'isMod:', node.isMod, 'isCategory:', node.isCategory, 'children count:', node.children?.length, 'displayName:', node.displayName);
+        // 如果是 MOD 节点（无论是否有子 MOD），显示 MOD 信息
         if (node.isMod) {
           result = [{
             key: node.key,
-            displayName: node.displayName || node.originTitle || node.title,
+            displayName: node.displayName || node.title,
             version: node.version || '未知',
             developerName: node.developerName || '未知',
             info: node.info || '未知',
@@ -639,8 +679,9 @@ const handleTreeSelect = (keys: string[]) => {
             disabled: false,
             path: node.path
           }];
-        } else {
-          result = (node.children || []).flatMap(child => flattenMods(child, false));
+        } else if (node.children) {
+          // 非 MOD 分类节点，显示子节点
+          result = node.children.flatMap(child => flattenMods(child, false));
         }
       }
     }
@@ -674,18 +715,22 @@ const findNodeByKey = (nodes: ModTreeNode[], key: string): ModTreeNode | null =>
   // 分割路径，逐层查找
   const parts = searchKey.split('/');
 
+  console.log('[findNodeByKey] 开始查找, searchKey:', searchKey, 'parts:', parts, '原始nodes数量:', nodes.length);
+
   let currentNodes = nodes;
   for (let i = 0; i < parts.length; i++) {
     const part = parts[i];
     const isLastPart = (i === parts.length - 1);
-    
+
     // 拼接当前层级的完整 key
     const currentKey = parts.slice(0, i + 1).join('/');
+    console.log('[findNodeByKey] 层级', i, ': part=', part, 'currentKey=', currentKey, '当前层级节点数:', currentNodes.length);
 
     let found: ModTreeNode | null = null;
 
     // 精确匹配当前层级的完整 key
     for (const node of currentNodes) {
+      console.log('[findNodeByKey]   检查节点: key=', node.key, 'title=', node.title);
       if (node.key === currentKey) {
         found = node;
         break;
@@ -693,10 +738,11 @@ const findNodeByKey = (nodes: ModTreeNode[], key: string): ModTreeNode | null =>
     }
 
     if (!found) {
+      console.log('[findNodeByKey] 未找到节点 currentKey:', currentKey);
       return null;
     }
 
-    console.log('[findNodeByKey] 找到节点:', found.key, 'isMod:', found.isMod, 'children:', found.children?.map(c => c.key));
+      console.log('[findNodeByKey] 找到节点:', found.key, 'isMod:', found.isMod, 'isCategory:', found.isCategory, 'children:', found.children?.map(c => c.key));
 
     // 如果是最后一部分，返回找到的节点
     if (isLastPart) {
