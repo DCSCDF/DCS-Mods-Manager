@@ -293,16 +293,29 @@ const getAllMods = (nodes: ModTreeNode[]): ModTreeNode[] => {
 };
 
 // 直接从目录结构提取所有 mods（用于禁用目录）
-const extractModsFromTree = (nodes: ModTreeNode[]): ModTreeNode[] => {
+const extractModsFromTree = (nodes: ModTreeNode[], seenPaths?: Set<string>): ModTreeNode[] => {
+  const paths = seenPaths || new Set<string>();
   let mods: ModTreeNode[] = [];
   for (const node of nodes) {
-    // 如果是 mod 节点（isMod 为 true）或者是文件夹（有 children），都尝试获取其下的 mods
+    // 跳过 (主目录) 节点
+    if (node.title && node.title.endsWith('(主目录)')) {
+      if (node.children) {
+        mods = mods.concat(extractModsFromTree(node.children, paths));
+      }
+      continue;
+    }
+    // 去重：如果已经处理过这个 path，跳过
     if (node.isMod) {
-      mods.push(node);
+      if (paths.has(node.path)) {
+        console.log('[extractModsFromTree] 跳过重复 MOD by path:', node.key, 'path:', node.path);
+      } else {
+        paths.add(node.path);
+        mods.push(node);
+      }
     }
     // 递归处理子节点
     if (node.children && node.children.length > 0) {
-      mods = mods.concat(extractModsFromTree(node.children));
+      mods = mods.concat(extractModsFromTree(node.children, paths));
     }
   }
   return mods;
@@ -496,8 +509,9 @@ const scanModsDirectory = async () => {
       autoExpandContainerKeys(allChildren);
       selectedKeys.value = ['all'];
 
-      // 构建启用 mods 列表
-      const enabledMods = rawTreeData.value.flatMap(node => flattenMods(node));
+      // 构建启用 mods 列表（共享同一个 seenKeys 去重）
+      const seenKeys = new Set<string>();
+      const enabledMods = rawTreeData.value.flatMap(node => flattenMods(node, false, seenKeys));
 
       // 合并显示所有 mods（启用 + 禁用）
       data.value = [...enabledMods, ...disabledModsList];
@@ -514,9 +528,10 @@ const scanModsDirectory = async () => {
 };
 
 // 扁平化获取所有 mod
-const flattenMods = (node: ModTreeNode, isDisabled: boolean = false): DataItem[] => {
+const flattenMods = (node: ModTreeNode, isDisabled: boolean = false, seenPaths?: Set<string>): DataItem[] => {
   let result: DataItem[] = [];
-  
+  const paths = seenPaths || new Set<string>();
+
   // 跳过 "_main" 文件夹（主目录），避免重复显示
   // _main 是 DCS 内部结构，实际内容在其子目录中
   if (node.isMod && node.title && node.title.endsWith('(主目录)')) {
@@ -524,30 +539,36 @@ const flattenMods = (node: ModTreeNode, isDisabled: boolean = false): DataItem[]
     console.log('[flattenMods] 跳过 _main (主目录) 文件夹:', node.key);
     if (node.children) {
       for (const child of node.children) {
-        result = result.concat(flattenMods(child, isDisabled));
+        result = result.concat(flattenMods(child, isDisabled, paths));
       }
     }
     return result;
   }
-  
+
   if (node.isMod) {
-    // 优先使用 displayName，其次使用 title
-    const modName = node.displayName || node.title || node.originTitle || '未知';
-    console.log('[flattenMods] 处理 MOD:', node.key, 'displayName:', JSON.stringify(node.displayName), 'title:', node.title, '最终名称:', modName);
-    result.push({
-      key: node.key,
-      displayName: modName,
-      version: node.version || '未知',
-      developerName: node.developerName || '未知',
-      info: node.info || '未知',
-      isUse: !isDisabled,
-      disabled: isDisabled,
-      path: node.path
-    });
+    // 去重：如果已经处理过这个 path，跳过
+    if (paths.has(node.path)) {
+      console.log('[flattenMods] 跳过重复 MOD by path:', node.key, 'path:', node.path);
+    } else {
+      paths.add(node.path);
+      // 优先使用 displayName，其次使用 title
+      const modName = node.displayName || node.title || node.originTitle || '未知';
+      console.log('[flattenMods] 处理 MOD:', node.key, 'displayName:', JSON.stringify(node.displayName), 'title:', node.title, '最终名称:', modName);
+      result.push({
+        key: node.key,
+        displayName: modName,
+        version: node.version || '未知',
+        developerName: node.developerName || '未知',
+        info: node.info || '未知',
+        isUse: !isDisabled,
+        disabled: isDisabled,
+        path: node.path
+      });
+    }
   }
   if (node.children) {
     for (const child of node.children) {
-      result = result.concat(flattenMods(child, isDisabled));
+      result = result.concat(flattenMods(child, isDisabled, paths));
     }
   }
   return result;
@@ -574,21 +595,37 @@ const handleTreeSelect = (keys: string[]) => {
 
   if (selectedKey === 'all') {
     // 显示全部（启用 + 禁用）
-    const enabledMods = rawTreeData.value.flatMap(node => flattenMods(node));
-    const disabledMods = rawDisabledTreeData.value.flatMap(node => flattenMods(node, true));
+    const seenKeys = new Set<string>();
+    const enabledMods = rawTreeData.value.flatMap(node => flattenMods(node, false, seenKeys));
+    const disabledMods = rawDisabledTreeData.value.flatMap(node => flattenMods(node, true, seenKeys));
     result = [...enabledMods, ...disabledMods];
   } else if (selectedKey === 'disabled') {
     // 显示所有禁用的 mods
-    result = rawDisabledTreeData.value.flatMap(node => flattenMods(node, true));
-  } else if (selectedKey.startsWith('disabled/')) {
+    result = rawDisabledTreeData.value.flatMap(node => flattenMods(node, true, new Set<string>()));
+  } else if (selectedKey.startsWith('disabled/') || selectedKey.startsWith('all/disabled/')) {
     // 禁用区域的节点
-    const searchKey = selectedKey.substring(9); // 去掉 "disabled/" 前缀
-    const node = findNodeByKey(rawDisabledTreeData.value, 'disabled/' + searchKey);
-    if (node) {
-      if (node.isMod && !node.isCategory) {
+    let searchKey = selectedKey.replace(/^(all\/)?disabled\//, '');
+    console.log('[handleTreeSelect] 禁用区域节点, originalKey:', selectedKey, 'searchKey:', searchKey);
+
+    // 检查是否是 MOD 节点的 "(主目录)" 选择
+    const mainDirMatch = searchKey.match(/^(.+)\/([^/]+)\/\2 \(主目录\)$/);
+    const categoryMainDirMatch = !mainDirMatch ? searchKey.match(/^(.+)\/([^/]+) \(主目录\)$/) : null;
+    console.log('[handleTreeSelect] disabled mainDirMatch:', mainDirMatch, 'categoryMainDirMatch:', categoryMainDirMatch);
+
+    if (mainDirMatch || categoryMainDirMatch) {
+      const match = mainDirMatch || categoryMainDirMatch!;
+      const parentPath = match[1];
+      const modName = match[2];
+      let searchNodeKey = parentPath + '/' + modName;
+      if (parentPath === modName) {
+        searchNodeKey = parentPath;
+      }
+
+      const node = findNodeByKey(rawDisabledTreeData.value, searchNodeKey);
+      if (node && node.isMod) {
         result = [{
           key: selectedKey,
-          displayName: node.displayName || node.originTitle || node.title,
+          displayName: node.displayName || node.title,
           version: node.version || '未知',
           developerName: node.developerName || '未知',
           info: node.info || '未知',
@@ -596,8 +633,28 @@ const handleTreeSelect = (keys: string[]) => {
           disabled: true,
           path: node.path
         }];
-      } else {
-        result = (node.children || []).flatMap(child => flattenMods(child, true));
+      }
+    } else {
+      // 普通节点选择
+      const node = findNodeByKey(rawDisabledTreeData.value, searchKey);
+      if (node) {
+        // 跳过 (主目录) 节点，避免重复
+        if (node.title && node.title.endsWith('(主目录)')) {
+          console.log('[handleTreeSelect] 跳过 (主目录) 节点:', node.key);
+        } else if (node.isMod) {
+          result = [{
+            key: selectedKey,
+            displayName: node.displayName || node.title,
+            version: node.version || '未知',
+            developerName: node.developerName || '未知',
+            info: node.info || '未知',
+            isUse: false,
+            disabled: true,
+            path: node.path
+          }];
+        } else if (node.children) {
+          result = node.children.flatMap(child => flattenMods(child, true));
+        }
       }
     }
   } else {
@@ -633,7 +690,7 @@ const handleTreeSelect = (keys: string[]) => {
         const parentKey = parentPath; // aircraft/_main -> aircraft
         console.log('[handleTreeSelect] _main 节点，实际查找父节点:', parentKey);
         const parentNode = findNodeByKey(rawTreeData.value, parentKey);
-        if (parentNode) {
+        if (parentNode && parentNode.children) {
           console.log('[handleTreeSelect] 找到父节点:', parentNode.key, 'isMod:', parentNode.isMod, 'isCategory:', parentNode.isCategory, 'children count:', parentNode.children?.length);
           // 显示父节点下的所有子 MOD
           result = parentNode.children.flatMap(child => flattenMods(child, false));
@@ -667,8 +724,10 @@ const handleTreeSelect = (keys: string[]) => {
       const node = findNodeByKey(rawTreeData.value, searchKey);
       if (node) {
         console.log('[handleTreeSelect] 找到节点:', node.key, 'isMod:', node.isMod, 'isCategory:', node.isCategory, 'children count:', node.children?.length, 'displayName:', node.displayName);
-        // 如果是 MOD 节点（无论是否有子 MOD），显示 MOD 信息
-        if (node.isMod) {
+        // 跳过 (主目录) 节点，避免重复
+        if (node.title && node.title.endsWith('(主目录)')) {
+          console.log('[handleTreeSelect] 跳过 (主目录) 节点:', node.key);
+        } else if (node.isMod) {
           result = [{
             key: node.key,
             displayName: node.displayName || node.title,
@@ -704,9 +763,11 @@ const handleTreeSelect = (keys: string[]) => {
 
 // 根据 key 查找节点（支持带前缀的 key）
 const findNodeByKey = (nodes: ModTreeNode[], key: string): ModTreeNode | null => {
-  // 去掉 "all/" 或 "disabled/" 前缀
+  // 去掉 "all/" 或 "all/disabled/" 前缀
   let searchKey = key;
-  if (key.startsWith('all/')) {
+  if (key.startsWith('all/disabled/')) {
+    searchKey = key.substring(12); // 去掉 "all/disabled/" 前缀
+  } else if (key.startsWith('all/')) {
     searchKey = key.substring(4);
   } else if (key.startsWith('disabled/')) {
     searchKey = key.substring(9);

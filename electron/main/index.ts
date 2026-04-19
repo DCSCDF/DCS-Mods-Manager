@@ -662,26 +662,6 @@ ipcMain.handle('scan-mods-directory', async (_event, basePath: string) => {
   }
 })
 
-// 获取需要删除的 Entry.lua 文件列表（只删除 Entry.lua）
-async function getEntryLuaFilesToDelete(folderPath: string): Promise<string[]> {
-  const entryLuaFiles: string[] = []
-
-  async function scanForEntryLua(dirPath: string) {
-    const entries = await fs.readdir(dirPath, { withFileTypes: true })
-    for (const entry of entries) {
-      const fullPath = path.join(dirPath, entry.name)
-      if (entry.isDirectory()) {
-        await scanForEntryLua(fullPath)
-      } else if (entry.name === 'Entry.lua') {
-        entryLuaFiles.push(fullPath)
-      }
-    }
-  }
-
-  await scanForEntryLua(folderPath)
-  return entryLuaFiles
-}
-
 // 删除 mod - 检查是否有其他 mod
 ipcMain.handle('check-mod-delete', async (_event, modPath: string) => {
   try {
@@ -813,30 +793,22 @@ ipcMain.handle('delete-mod-lua', async (_event, modPath: string) => {
       return { success: false, error: 'Mod 不在 Mods 目录下' }
     }
 
-    // 获取所有 Entry.lua 文件
-    const entryLuaFiles = await getEntryLuaFilesToDelete(normalizedModPath)
+    let deletedCount = 0
 
-    // 删除所有 Entry.lua 文件
-    for (const luaFile of entryLuaFiles) {
-      await fs.unlink(luaFile)
+    // 只删除当前 MOD 目录自身的 Entry.lua（不递归到子目录）
+    // 子 MOD 有自己的 Entry.lua，不应该被删除
+    const selfEntryLuaPath = path.join(normalizedModPath, 'Entry.lua')
+    try {
+      await fs.access(selfEntryLuaPath)
+      await fs.unlink(selfEntryLuaPath)
+      deletedCount++
+    } catch {
+      // 当前目录没有 Entry.lua，忽略
     }
 
-    // 清理空目录
-      async function cleanEmptyDirs(dirPath: string) {
-      const entries = await fs.readdir(dirPath, { withFileTypes: true })
-      for (const entry of entries) {
-        if (entry.isDirectory()) {
-          const subPath = path.join(dirPath, entry.name)
-          await cleanEmptyDirs(subPath)
-          // 检查是否为空
-          const subEntries = await fs.readdir(subPath)
-          if (subEntries.length === 0) {
-            await fs.rmdir(subPath)
-          }
-        }
-      }
-    }
-    await cleanEmptyDirs(normalizedModPath)
+    // 尝试清理空目录（只删除没有内容的目录）
+    // 注意：不要删除包含 MOD 的子目录
+    await cleanEmptyDirsExceptMods(normalizedModPath)
 
     // 最后检查 mod 目录是否为空
     try {
@@ -848,8 +820,37 @@ ipcMain.handle('delete-mod-lua', async (_event, modPath: string) => {
       // 忽略
     }
 
-    return { success: true, deletedCount: entryLuaFiles.length }
+    return { success: true, deletedCount }
   } catch (error) {
     return { success: false, error: '删除失败: ' + (error as Error).message }
   }
 })
+
+// 清理空目录，但保留包含 MOD 的子目录
+async function cleanEmptyDirsExceptMods(dirPath: string) {
+  const entries = await fs.readdir(dirPath, { withFileTypes: true })
+
+  for (const entry of entries) {
+    if (entry.isDirectory()) {
+      const subPath = path.join(dirPath, entry.name)
+
+      // 递归清理子目录
+      await cleanEmptyDirsExceptMods(subPath)
+
+      // 检查子目录是否为空
+      const subEntries = await fs.readdir(subPath)
+      if (subEntries.length === 0) {
+        // 子目录为空，删除它
+        await fs.rmdir(subPath)
+      } else {
+        // 子目录非空，检查是否是 MOD 目录（即包含 Entry.lua）
+        // 如果是 MOD 目录，需要保留
+        const hasEntryLua = subEntries.some(e => e === 'Entry.lua')
+        if (hasEntryLua) {
+          // 这是 MOD 目录，保留
+          console.log(`[cleanEmptyDirsExceptMods] 保留 MOD 目录: ${subPath}`)
+        }
+      }
+    }
+  }
+}
