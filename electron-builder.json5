@@ -9,6 +9,8 @@
   "directories": {
     "output": "release/${version}"
   },
+  // 在项目根目录创建 build 文件夹存放图标
+  "icon": "src/assets/f813s-tu37t-001",  // 不带扩展名，electron-builder 自动识别
   "files": [
     "dist",
     "dist-electron"
@@ -26,8 +28,9 @@
         "arch": [
           "x64"
         ]
-      }
+      },
     ],
+    "icon": "src/assets/f813s-tu37t-001",
     "artifactName": "${productName}-Windows-${version}-Setup.${ext}"
   },
   "nsis": {
