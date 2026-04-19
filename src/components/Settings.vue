@@ -16,7 +16,7 @@
                       <div class="flex items-center gap-3">
                         <a-input
                           v-model:value="dcsPath"
-                          placeholder="请输入或选择 DCS 安装路径"
+
                           class="flex-1"
                         />
                         <a-button type="primary" @click="handleSelectFolder">
@@ -33,7 +33,7 @@
                         <a-button type="primary" @click="handleSubmit" :loading="loading">
                           保存
                         </a-button>
-                        <a-button @click="dcsPath = ''">
+                        <a-button @click="handleReset" :loading="loading">
                           重置
                         </a-button>
                       </a-space>
@@ -110,6 +110,21 @@ const handleSelectFolder = async () => {
     }
   } catch (error) {
     message.error('选择文件夹失败: ' + (error as Error).message)
+  }
+}
+
+// 重置设置
+const handleReset = async () => {
+  try {
+    if (window.windowApi?.saveSettings) {
+      await window.windowApi.saveSettings({ dcsPath: '' })
+      dcsPath.value = ''
+      message.success('重置成功')
+    } else {
+      message.warning('此功能仅在 Electron 环境下可用')
+    }
+  } catch (error) {
+    message.error('重置失败: ' + (error as Error).message)
   }
 }
 

@@ -776,8 +776,14 @@ const handleEnableMods = () => {
   });
 };
 
-// 检查路径是否有效
+// 检查路径是否有效（确保只检查一次）
+let hasCheckedPath = false;
 const checkPath = async () => {
+        if (hasCheckedPath) {
+                return true;
+        }
+        hasCheckedPath = true;
+
         try {
                 if (window.windowApi?.getSettings) {
                         const settings = await window.windowApi.getSettings();
